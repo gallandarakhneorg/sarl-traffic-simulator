@@ -1,0 +1,460 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.fx.scaleindicator
+
+import com.sun.javafx.tk.Toolkit
+import javafx.scene.text.Font
+import org.arakhne.afc.math.physics.MeasureUnitUtil
+import org.arakhne.afc.math.physics.SpaceUnit
+import org.arakhne.afc.nodefx.ZoomableGraphicsContext
+import org.eclipse.xtend.lib.annotations.Accessors
+
+/** Default implementation of a listener on the drawing of the map scale indicators.
+ * This function draw a simple black-and-white indicator.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class DefaultScaleIndicatorDrawer implements ScaleIndicatorDrawer {
+
+	/** Distance between the component border and the bar.
+	 */
+	static val BORDER_MARGIN = 5
+	
+	/** Distance between the bar border and the strings around.
+	 */
+	static val BAR_MARGIN = 3
+	
+	/** The unit amount under which the date is
+	 * assumed to be too small.
+	 */
+	static val MINIMAL_SIGNIFICANT_UNIT = 2
+
+	static val ACCEPTED_UNITS : SpaceUnit[] = #[
+		SpaceUnit::MILLIMETER,
+		SpaceUnit::CENTIMETER,
+		SpaceUnit::METER,
+		SpaceUnit::KILOMETER
+	]
+
+	var preferredBarWidth : double
+	var preferredBarHeight : double
+	@Accessors
+	var penSize : double
+	@Accessors
+	var fontSize : double
+	@Accessors
+	var foregroundColor : int
+	@Accessors
+	var backgroundColor1 : int
+	@Accessors
+	var backgroundColor2 : int
+			
+	/**
+	 * Draw the indicator with the given size in pixels.
+	 *
+	 * @param width is the width of the indicator in pixels.
+	 * @param height is the height of the indicator in pixels.
+	 * @param penSize the size of the pen in pixels.
+	 * @param fontSize the minimal font size in pixels.
+	 * @param fgColor the color of the pen.
+	 * @param bgColor1 the first color for filling.
+	 * @param bgColor2 the second color for filling.
+	 */
+	new (width : double, height : double, penSize : double, fontSize : double, fgColor : int, bgColor1 : int, bgColor2 : int) {
+		this.preferredBarWidth = width
+		this.preferredBarHeight = height
+		this.penSize = penSize
+		this.fontSize = fontSize
+		this.foregroundColor = fgColor
+		this.backgroundColor1 = bgColor1
+		this.backgroundColor2 = bgColor2
+	}
+	
+	/** Replies the width of the indicator.
+	 * 
+	 * @return the width of the indicator in pixels.
+	 */
+	def getWidth : double {
+		this.preferredBarWidth
+	}
+
+	/** Replies the height of the indicator.
+	 * 
+	 * @return the height of the indicator in pixels.
+	 */
+	def getHeight : double {
+		this.preferredBarHeight
+	}
+
+	/** Set the width of the indicator.
+	 * 
+	 * @param width is the width of the indicator in pixels.
+	 */
+	def setWidth(width : int) : void {
+		this.preferredBarWidth = width
+	}
+
+	/** Set the height of the indicator.
+	 * 
+	 * @param height is the height of the indicator in pixels.
+	 */
+	def setHeight(height : int) : void {
+		this.preferredBarHeight = height
+	}
+
+	static def getBestSpaceUnit(meters : double) : SpaceUnit {
+		var u : SpaceUnit = null
+    	var v : double
+    	for (var i= ACCEPTED_UNITS.length - 1; i >= 0; i--) {
+    		u = ACCEPTED_UNITS.get(i)
+    		v = Math::floor(MeasureUnitUtil::fromMeters(meters, u))
+			if (v >= MINIMAL_SIGNIFICANT_UNIT) {
+				return u
+			}
+		}
+    	assert u !== null
+    	return u
+	}
+	
+	static def computeStepSize(value : double) : int {
+		var delta = 1.0
+		while (value > delta) {
+			delta = delta * 10.0
+		}
+		return Math::max(1.0, delta/10.0) as int
+	}
+
+	/** Compute the cells of the bar.
+	 * 
+	 * @param distanceUnit is the unit used to display the values.
+	 * @param totalBarWidth is bar width in pixels
+	 * @param totalBarWidthInMeters is bar width in meters
+	 * @param context is the zoomable context used.
+	 * @return the bar cells in pixels
+	 */
+	protected static def computeCells(context : ZoomableGraphicsContext, distanceUnit : SpaceUnit, totalBarWidth : double, totalBarWidthInMeters : double) : CellSet {
+    	var maxDistance = totalBarWidthInMeters
+    	if (distanceUnit !== SpaceUnit::METER) {
+    		maxDistance = MeasureUnitUtil::convert(totalBarWidthInMeters, SpaceUnit::METER, distanceUnit)
+    	}
+
+    	var stepSize = maxDistance.computeStepSize
+       	var nbSteps = (maxDistance / stepSize) as int
+    	if (nbSteps < MINIMAL_SIGNIFICANT_UNIT) {
+    		nbSteps = MINIMAL_SIGNIFICANT_UNIT;
+    		stepSize = (maxDistance / nbSteps) as int
+    	}
+    	
+    	var nbCells : int
+    	var extent = maxDistance > (nbSteps * stepSize)
+    	if (extent) {
+    		nbCells = 1
+    	} else {
+    		nbCells = 0
+    	}
+    	nbCells += nbSteps
+    	
+    	var cellSet = new CellSet(nbCells)
+
+    	var metricStepSize : double
+    	if (distanceUnit != SpaceUnit::METER) {
+    		metricStepSize = MeasureUnitUtil::convert(stepSize, distanceUnit, SpaceUnit::METER)
+    	} else {
+    		metricStepSize = stepSize
+    	}
+
+    	var pixelStepSize = context.doc2fxSize(metricStepSize) as int
+    	
+		cellSet.set(0, pixelStepSize, stepSize)
+    	for (var i = 1; i < nbSteps / 2; i++) {
+    		cellSet.set(i,
+    				cellSet.getPixel(i-1) + pixelStepSize,
+    				cellSet.getMetric(i-1) + stepSize)
+    	}
+    	
+    	var lastIndex = cellSet.length - (if (extent) 2 else 1)
+    	for (var i = nbSteps / 2; i < lastIndex; i++) {
+        	cellSet.set(i,
+        			cellSet.getPixel(i-1) + pixelStepSize,
+    				Double::NaN)
+    	}
+    	
+    	cellSet.set(lastIndex,
+    				nbSteps * pixelStepSize,
+    				nbSteps * stepSize)
+    	
+    	if (extent) {
+        	cellSet.set(cellSet.length() - 1,
+    				totalBarWidth,
+    				Double::NaN)
+    	}
+    	
+    	return cellSet
+	}
+
+    @SuppressWarnings("potential_inefficient_value_conversion")
+	override drawMapScaleIndicator(gc : ZoomableGraphicsContext, position : MapScalePosition, isHorizontal : boolean) {
+		assert position != MapScalePosition::NONE
+		    	
+    	//-----------------------------------------------//
+    	// In the rest of this function, when a variable //
+    	// is postfixed with "InMeters" it means that    //
+    	// its value is expressed in metric unit.        //
+    	// Otherwise its value is expressed in pixels.   //
+    	//-----------------------------------------------//
+    	
+    	// Get the drawing rectangle
+		// Assumes that the area rectangle is (0;0;areaSize.width;areaSize.height)
+		val fxgc = gc.wrappedGraphicsContext2D
+		var areaWidth = fxgc.canvas.width
+		var areaHeight = fxgc.canvas.height
+		var barWidth = getWidth
+    	var barHeight = getHeight
+
+    	// Compute the parts
+		var barWidthInMeters = gc.fx2docSize(barWidth)
+    	var distanceUnit = barWidthInMeters.bestSpaceUnit
+    	var cells = gc.computeCells(distanceUnit, barWidth, barWidthInMeters)
+
+    	// save graphical context attributes
+		fxgc.save
+
+    	// retrieve unit symbol informations
+		var font = Font::font(fxgc.font.name, Math.max(barHeight / 2.0, getFontSize))
+    	fxgc.font = font
+    	var unitSymbol = distanceUnit.symbol
+    	var unitSymbolWidth = Toolkit::toolkit.fontLoader.computeStringWidth(unitSymbol, font)
+    	var fontHeight = Toolkit::toolkit.fontLoader.getFontMetrics(font).lineHeight
+
+    	var bx : double
+		var by : double
+		var sx : double
+		var sy : double
+    	var label : String
+    	var metric : double
+    	
+    	if (isHorizontal) {
+    		// Compute the position of the horizontal bar
+    		if (position.leftColumn) {
+    			bx = BORDER_MARGIN
+    		} else if (position.middleColumn) {
+    			bx = (areaWidth - barWidth) / 2.0
+    		} else {
+    			bx = areaWidth - BORDER_MARGIN - unitSymbolWidth - BAR_MARGIN - barWidth
+    		}
+    		if (position.topRow) {
+        		by = BORDER_MARGIN + fontHeight + BAR_MARGIN
+    		} else if (position.middleRow) {
+        		by = (areaHeight - barHeight) / 2.0
+    		} else {
+        		by = areaHeight - BORDER_MARGIN - barHeight
+    		}
+    		
+    		// Fill the bar background
+        	var x1 = bx
+        	var draw = true
+        	for (var i = 0; i < cells.length; i++) {
+        		if (draw) {
+					fxgc.fill = gc.rgb(getBackgroundColor1)
+					fxgc.stroke = gc.rgb(getBackgroundColor1)
+				} else {
+					fxgc.fill = gc.rgb(getBackgroundColor2)
+					fxgc.stroke = gc.rgb(getBackgroundColor2)
+				}
+				fxgc.fillRect(x1, by, cells.getPixel(i) + bx - x1, barHeight)
+        		x1 = cells.getPixel(i) + bx
+        		draw = !draw
+        	}
+        	
+        	// Draw the bar borders, lines and associated labels
+			fxgc.stroke = gc.rgb(getForegroundColor)
+			fxgc.fill = gc.rgb(getForegroundColor)
+			fxgc.lineWidth = getPenSize
+			fxgc.strokeRect(bx, by, barWidth, barHeight)
+
+        	var yy = by + barHeight
+        	sy = by - BAR_MARGIN - fontHeight
+        	
+        	label = 0 as String
+			fxgc.strokeText(label, bx, sy)
+
+			fxgc.beginPath
+        	for (var i = 0; i < cells.length - 1; i++) {
+        		x1 = cells.getPixel(i) + bx
+				fxgc.moveTo(x1, by)
+				fxgc.lineTo(x1, yy)
+            	metric = cells.getMetric(i)
+            	if (!metric.isNaN) {
+	        		label = (metric as int) as String
+	        		sx = x1 - (Toolkit::toolkit.fontLoader.computeStringWidth(label, font) / 2.0)
+					fxgc.strokeText(label, sx, sy)
+            	}
+        	}
+        	
+        	// Draw the unit symbol
+        	sx = bx + barWidth + BAR_MARGIN
+        	sy = by + (barHeight - fontHeight) / 2.0
+			fxgc.strokeText(unitSymbol, sx, sy)
+
+        	// Draw the 10-pixel indicator
+			yy = by + barHeight - 1
+			fxgc.moveTo(bx, yy)
+			fxgc.lineTo(bx + 10, yy)
+			fxgc.stroke()
+		} else {
+    		// Compute the position of the vertical bar
+    		if (position.leftColumn) {
+        		bx = BORDER_MARGIN
+    		} else if (position.middleColumn) {
+        		bx = (areaWidth - barHeight) / 2.0
+    		} else {
+        		bx = areaWidth - Math::max(barHeight, unitSymbolWidth) - BORDER_MARGIN
+    		}
+    		if (position.topRow) {
+        		by = BORDER_MARGIN
+    		} else if (position.middleRow) {
+        		by = (areaHeight - barWidth) / 2.0
+    		} else {
+        		by = areaHeight - BORDER_MARGIN - barWidth - fontHeight - BAR_MARGIN
+    		}
+
+    		// Fill the bar background
+        	var y1 = by
+        	var draw = true
+        	for (var i = 0; i < cells.length; i++) {
+        		if (draw) {
+					fxgc.fill = gc.rgb(getBackgroundColor1)
+        		} else {
+					fxgc.fill = gc.rgb(getBackgroundColor2)
+        		}
+				fxgc.fillRect(bx, y1, barHeight, cells.getPixel(i) + by - y1)
+        		y1 = cells.getPixel(i) + by
+        		draw = !draw
+        	}
+		        	
+        	// Draw the bar borders, lines and associated labels
+			fxgc.stroke = gc.rgb(getForegroundColor)
+			fxgc.lineWidth = getPenSize
+			fxgc.strokeRect(bx, by, barHeight, barWidth)
+
+        	var xx = bx + barHeight
+        	
+        	label = 0 as String
+        	sx = if(position.rightColumn) (bx - BAR_MARGIN -
+				Toolkit::toolkit.fontLoader.computeStringWidth(label, font))
+			else
+				(bx + barHeight + BAR_MARGIN)
+			fxgc.strokeText(label, sx, by)
+
+			fxgc.beginPath
+        	for(var i = 0; i < cells.length - 1; i++) {
+        		y1 = cells.getPixel(i) + by
+				fxgc.moveTo(bx, y1)
+				fxgc.lineTo(xx, y1)
+            	metric = cells.getMetric(i)
+            	if (!metric.isNaN) {
+	        		label = (metric as int) as String
+	        		sy = y1 - fontHeight / 2.0
+	        		if (position.rightColumn) {
+	        			sx = bx - BAR_MARGIN - Toolkit::toolkit.fontLoader.computeStringWidth(label, font)
+	        		}
+					fxgc.strokeText(label, sx, sy)
+            	}
+        	}
+
+        	// Draw the unit symbol
+        	sx = bx
+        	sy = by + barWidth + BAR_MARGIN
+			fxgc.strokeText(unitSymbol, sx, sy)
+
+        	// Draw the 10-pixel indicator
+			xx = bx + 1
+			fxgc.moveTo(xx, by)
+			fxgc.lineTo(xx, by + 10)
+			fxgc.stroke()
+		}
+    	
+    	// Restore values
+		fxgc.restore
+    }
+    
+    /**
+     * @author $Author: sgalland$
+     * @version $FullVersion$
+     * @mavengroupid $GroupId$
+     * @mavenartifactid $ArtifactId$
+     */
+    private static class CellSet {
+
+    	val pixel : double[]
+    	val metric : double[]
+    	
+    	/** Constructor.
+    	 *
+    	 * @param nbCells the number of cells in the scale.
+    	 */
+    	new (nbCells : int) {
+    		this.pixel = newDoubleArrayOfSize(nbCells)
+    		this.metric = newDoubleArrayOfSize(nbCells)
+    	}
+    	
+    	/** Set the pixel and metric at the given position.
+    	 * 
+    	 * @param index
+    	 * @param pixel
+    	 * @param metric
+    	 */
+    	def set(index : int, pixel : double, metric : double) : void {
+    		this.pixel.set(index, pixel)
+    		this.metric.set(index, metric)
+    	}
+    	
+    	/** Replies the pixel at the given position.
+    	 * 
+    	 * @param index
+    	 * @return the pixel
+    	 */
+    	def getPixel(index : int) : double {
+    		this.pixel.get(index)
+    	}
+    	
+    	/** Replies the metric at the given position.
+    	 * 
+    	 * @param index
+    	 * @return the metric
+    	 */
+    	def getMetric(index : int) : double {
+    		this.metric.get(index)
+    	}
+    	
+    	/** Replies the number of available cells.
+    	 * 
+    	 * @return the number of available cells.
+    	 */
+    	def length : int {
+    		this.pixel.length
+    	}
+
+    }
+
+}

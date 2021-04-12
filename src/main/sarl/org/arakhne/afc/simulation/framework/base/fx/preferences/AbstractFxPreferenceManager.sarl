@@ -1,0 +1,1833 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.fx.preferences
+
+import com.dlsc.formsfx.model.validators.DoubleRangeValidator
+import com.dlsc.formsfx.model.validators.IntegerRangeValidator
+import com.dlsc.preferencesfx.model.Setting
+import com.dlsc.preferencesfx.util.Constants
+import java.io.File
+import java.io.IOException
+import java.io.OutputStream
+import java.util.Map
+import java.util.prefs.BackingStoreException
+import java.util.prefs.NodeChangeListener
+import java.util.prefs.PreferenceChangeListener
+import java.util.prefs.Preferences
+import javafx.beans.property.BooleanProperty
+import javafx.beans.property.DoubleProperty
+import javafx.beans.property.IntegerProperty
+import javafx.beans.property.ObjectProperty
+import javafx.beans.property.SimpleBooleanProperty
+import javafx.beans.property.SimpleDoubleProperty
+import javafx.beans.property.SimpleIntegerProperty
+import javafx.beans.property.SimpleObjectProperty
+import org.arakhne.afc.simulation.framework.base.preferences.AbstractPreferenceManager
+import javafx.beans.property.ListProperty
+import org.arakhne.afc.simulation.framework.base.preferences.HumanEstimationModel
+import com.sun.javafx.collections.ImmutableObservableList
+import javafx.beans.property.SimpleListProperty
+import org.arakhne.afc.util.EnumJsonTypeAdapter
+
+/** 
+ * Manager of preferences for a simulator.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+abstract class AbstractFxPreferenceManager extends AbstractPreferenceManager implements PreferenceCategoryProvider {
+
+	public static val PREFERENCES_CATEGORY_FILESYSTEM = "FILESYSTEM"
+
+	public static val PREFERENCES_GROUP_FILESYSTEM_PREFERREDFILES = "PFILES"
+
+	public static val PREFERENCES_CATEGORY_LOGGING = "LOGGING"
+
+	public static val PREFERENCES_GROUP_LOGGING_GENERAL = "GENERAL"
+
+	public static val PREFERENCES_GROUP_LOGGING_LOGPANEL = "LOGPANEL"
+
+	public static val PREFERENCES_GROUP_LOGGING_COLORS = "COLORS"
+
+	public static val PREFERENCES_CATEGORY_SIMULATION = "SIMULATION"
+
+	public static val PREFERENCES_GROUP_SIMULATION_TIME = "TIME"
+
+	public static val PREFERENCES_GROUP_SIMULATION_EXECUTION = "EXECUTION"
+
+	public static val PREFERENCES_CATEGORY_CHARTS = "CHARTS"
+
+	public static val PREFERENCES_GROUP_CHARTS_GENERAL = "CHARTGENERAL"
+
+	public static val PREFERENCES_CATEGORY_MAP = "MAP"
+
+	public static val PREFERENCES_GROUP_MAP_COLORS = "MAPCOLORS"
+
+	public static val PREFERENCES_GROUP_MAP_SCALE_INDICATOR = "MAPSCALEINDICATOR"
+
+	public static val PREFERENCES_CATEGORY_AGENTS = "AGENTS"
+
+	public static val PREFERENCES_GROUP_AGENTS_BEHAVIOR = "BEHAVIOR"
+
+	var storageHandlerObject : PreferenceStorage
+
+	var scenarioPreferences : ScenarioPreferences
+
+	override overridePreferences(localPreferences : Map<String, String>) {
+		if (localPreferences === null || localPreferences.isEmpty) {
+			this.scenarioPreferences = null
+		} else {
+			this.scenarioPreferences = new ScenarioPreferences(this.storageHandler.preferences, localPreferences)
+		}
+		reread
+	}
+
+	override getPreferenceOverride : Map<String, String> {
+		if (this.scenarioPreferences !== null) {
+			return this.scenarioPreferences.overridingPreferences
+		}
+		return null
+	}
+
+	override removePreferenceOverride {
+		this.scenarioPreferences = null
+	}
+
+	override getWriteStore : Preferences {
+		this.storageHandler.preferences
+	}
+
+	override getReadStore : Preferences {
+		if (this.scenarioPreferences !== null) {
+			return this.scenarioPreferences
+		}
+		return this.storageHandler.preferences
+	}
+
+	/** Replies the storage handler used by this manager.
+	 */
+	final def getStorageHandler : PreferenceStorage {
+		if (this.storageHandlerObject === null) {
+			this.storageHandlerObject = new PreferenceStorage(this.storageClass)
+		}
+		return this.storageHandlerObject
+	}
+
+	protected override prefFile(name : String, defaultValue : File = null, enableJson : boolean = true) : File {
+		super.prefFile(name.hashName, defaultValue, enableJson)
+	}
+	
+	protected override prefDouble(name : String, defaultValue : double = 0.0) : double {
+		super.prefDouble(name.hashName, defaultValue)
+	}
+	
+	protected override prefInt(name : String, defaultValue : int = 0) : int {
+		super.prefInt(name.hashName, defaultValue)
+	}
+
+	protected override prefBoolean(name : String, defaultValue : boolean = false) : boolean {
+		super.prefBoolean(name.hashName, defaultValue)
+	}
+
+	protected override prefEnum(name : String, type : Class<T>, defaultValue : T = null) : T with T extends Enum<T> {
+		super.prefEnum(name.hashName, type, defaultValue)
+	}
+
+	/** 
+	 * Encode the key to be compliant with {@link Preferences} contraints.
+	 * 
+	 * <p>Since {@link Preferences#MAX_KEY_LENGTH} is 80, if the name is over 80 characters, it
+	 * will lead to an exception while saving.
+	 *
+	 * <p>The PreferencesFx API generates a SHA-256 hash of a String for names.
+	 *
+	 * <p>The behavior from PreferencesFx API is replaced in order to use the UUID/MD5 hash if
+	 * the length of the name is longer than {@link Preferences#MAX_KEY_LENGTH}.
+	 * 
+	 * @param name the name to encode. 
+	 * @return MD5 representation of the name.
+	 */
+	protected def hashName(name : String) : String {
+		return getStorageHandler.hash(name)
+	}
+
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	protected static def name(names : String*) : String {
+		val buffer = new StringBuffer
+		if (names.length > 0) {
+			buffer.append(names.get(0))
+			for (var i = 1; i < names.length; i++) {
+				var nm = names.get(i)
+				if (!nm.nullOrEmpty) {
+					buffer.append(Constants::BREADCRUMB_DELIMITER)
+					buffer.append(nm)
+				}
+			}
+		}
+		return buffer as String
+	}
+
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	protected static def basename(name : String) : String {
+		val index = name.lastIndexOf(Constants::BREADCRUMB_DELIMITER)
+		if (index >= 0) {
+			return name.substring(index + 1)
+		}
+		return name
+	}
+
+	def buildPreferenceCategories(extension builder : PreferenceCategoryBuilder) {
+		builder.create(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_GENERAL,
+			Setting::of(ENABLE_UI_CONSOLE, this.enableUiConsoleProperty))
+		builder.create(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_GENERAL,
+			Setting::of(LOG_ON_CONSOLE, this.logOnConsoleProperty))
+		builder.create(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_GENERAL,
+			Setting::of(UI_CONSOLE_BUFFER_SIZE, this.uiConsoleBufferSizeProperty)
+			.validate(IntegerRangeValidator::atLeast(1, "MUST_BE_GREATER_THAN_1")))
+
+		builder.create(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_COLORS,
+			ofColorType(LOG_ERROR_COLOR, this.logErrorColorProperty))
+		builder.create(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_COLORS,
+			ofColorType(LOG_WARNING_COLOR, this.logWarningColorProperty))
+		builder.create(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_COLORS,
+			ofColorType(LOG_INFO_COLOR, this.logInfoColorProperty))
+
+		builder.create(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_COLORS,
+			ofColorType(SCALE_INDICATOR_FOREGROUND_COLOR, this.scaleIndicatorForegroundColorProperty))
+		builder.create(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_COLORS,
+			ofColorType(SCALE_INDICATOR_BACKGROUND_COLOR1, this.scaleIndicatorBackgroundColor1Property))
+		builder.create(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_COLORS,
+			ofColorType(SCALE_INDICATOR_BACKGROUND_COLOR2, this.scaleIndicatorBackgroundColor2Property))
+
+		builder.create(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR,
+			Setting::of(SCALE_INDICATOR_PEN_SIZE, this.scaleIndicatorPenSizeProperty).validate(
+				DoubleRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR,
+			Setting::of(SCALE_INDICATOR_MIN_FONT_SIZE, this.scaleIndicatorMinFontSizeProperty).validate(
+				DoubleRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR,
+			Setting::of(SCALE_INDICATOR_WIDTH, this.scaleIndicatorWidthProperty).validate(
+				DoubleRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR,
+			Setting::of(SCALE_INDICATOR_HEIGHT, this.scaleIndicatorHeightProperty).validate(
+				DoubleRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_LOGPANEL,
+			Setting::of(LOG_PANEL_REFRESH_DELAY, this.logPanelRefreshDelayProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME,
+			Setting::of(SIMULATION_START_TIME, this.simulationStartTimeProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME,
+			Setting::of(SIMULATION_TIME_STEP, this.simulationStepDurationProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME,
+			Setting::of(SIMULATION_DEFAULT_OS_TIME_FACTOR, this.simulationDefaultOsTimeFactorProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_EXECUTION,
+			Setting::of(SIMULATION_LOOP_DELAY, this.simulationLoopDelayProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_CHARTS, PREFERENCES_GROUP_CHARTS_GENERAL,
+			Setting::of(CHART_X_RANGE_FACTOR, this.chartXRangeFactorProperty).validate(
+				DoubleRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_CHARTS, PREFERENCES_GROUP_CHARTS_GENERAL,
+			Setting::of(PROBE_PANEL_REFRESH_DELAY, this.probePanelRefreshDelayProperty).validate(
+				IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(HUMAN_ESTIMATION_MODEL, this.humanEstimationModelAvailableValues, this.humanEstimationModelProperty))
+	}
+
+	override reread {
+		rereadLastOpenedDirectory
+		rereadLastOpenedFile
+		rereadSimulationStartTime
+		rereadSimulationStopTime
+		rereadSimulationStepDuration
+		rereadSimulationLoopDelay
+		rereadSimulationDefaultOsTimeFactor
+		rereadLogErrorColor
+		rereadLogWarningColor
+		rereadLogInfoColor
+		rereadLogOnConsole
+		rereadUiConsoleBufferSize
+		rereadEnableUiConsole
+		rereadChartXRangeFactor
+		rereadLogPanelRefreshDelay
+		rereadProbePanelRefreshDelay
+		rereadScaleIndicatorForegroundColor
+		rereadScaleIndicatorBackgroundColor1
+		rereadScaleIndicatorBackgroundColor2
+		rereadScaleIndicatorPenSize
+		rereadScaleIndicatorMinFontSize
+		rereadScaleIndicatorWidth
+		rereadScaleIndicatorHeight
+		rereadHumanEstimationModel
+	}
+
+	protected override saveProperties {
+		saveLastOpenedDirectory
+		saveLastOpenedFile
+		saveSimulationStartTime
+		saveSimulationStopTime
+		saveSimulationStepDuration
+		saveSimulationLoopDelay
+		saveSimulationDefaultOsTimeFactor
+		saveLogErrorColor
+		saveLogWarningColor
+		saveLogInfoColor
+		saveLogOnConsole
+		saveUiConsoleBufferSize
+		saveEnableUiConsole
+		saveChartXRangeFactor
+		saveLogPanelRefreshDelay
+		saveProbePanelRefreshDelay
+		saveScaleIndicatorForegroundColor
+		saveScaleIndicatorBackgroundColor1
+		saveScaleIndicatorBackgroundColor2
+		saveScaleIndicatorPenSize
+		saveScaleIndicatorMinFontSize
+		saveScaleIndicatorWidth
+		saveScaleIndicatorHeight
+		saveHumanEstimationModel
+	}
+
+	override setPropertiesToDefault {
+		restoreSimulationStartTime
+		restoreSimulationStopTime
+		restoreSimulationStepDuration
+		restoreSimulationLoopDelay
+		restoreSimulationDefaultOsTimeFactor
+		restoreLogErrorColor
+		restoreLogWarningColor
+		restoreLogInfoColor
+		restoreLogOnConsole
+		restoreUiConsoleBufferSize
+		restoreEnableUiConsole
+		restoreChartXRangeFactor
+		restoreLogPanelRefreshDelay
+		restoreProbePanelRefreshDelay
+		restoreScaleIndicatorForegroundColor
+		restoreScaleIndicatorBackgroundColor1
+		restoreScaleIndicatorBackgroundColor2
+		restoreScaleIndicatorPenSize
+		restoreScaleIndicatorMinFontSize
+		restoreScaleIndicatorWidth
+		restoreScaleIndicatorHeight
+		restoreHumanEstimationModel
+	}
+
+
+
+
+	var lastOpenedDirectory : ObjectProperty<File>
+	
+	/** Replies the property that contains the last opened directory.
+	 */
+	def getLastOpenedDirectoryProperty : ObjectProperty<File> {
+		if (this.lastOpenedDirectory === null) {
+			this.lastOpenedDirectory = new SimpleObjectProperty<File>(this, LAST_OPENED_DIRECTORY, defaultLastOpenedDirectory) {
+				override invalidated {
+					var file = get
+					if (!file.isDirectory) {
+						set(file.parentFile)
+					}
+				}
+			}
+		}
+		return this.lastOpenedDirectory
+	}
+
+	private def nameLastOpenedDirectory : String {
+		name(PREFERENCES_CATEGORY_FILESYSTEM, PREFERENCES_GROUP_FILESYSTEM_PREFERREDFILES, LAST_OPENED_DIRECTORY)
+	}
+
+	private def defaultLastOpenedDirectory : File {
+		nameLastOpenedDirectory.prefFile
+	}
+
+	private def rereadLastOpenedDirectory {
+		if (this.lastOpenedDirectory !== null) {
+			this.lastOpenedDirectory.set(defaultLastOpenedDirectory)
+		}
+	}
+
+	private def saveLastOpenedDirectory {
+		if (this.lastOpenedDirectory !== null) {
+			var file = this.lastOpenedDirectory.get
+			if (file === null) {
+				writeStore.remove(nameLastOpenedDirectory)
+			} else {
+				var str = this.gson.toJson(file)
+				writeStore.put(nameLastOpenedDirectory, str)
+			}
+		}
+	}
+
+	override getLastOpenedDirectory : File {
+		lastOpenedDirectoryProperty.get
+	}
+
+	override setLastOpenedDirectory(file : File) {
+		lastOpenedDirectoryProperty.set(file)
+	}
+
+
+
+
+	var lastOpenedFile : ObjectProperty<File>
+
+	/** Replies the property that contains the last opened file.
+	 */
+	def getLastOpenedFileProperty : ObjectProperty<File> {
+		if (this.lastOpenedFile === null) {
+			this.lastOpenedFile = new SimpleObjectProperty(this, LAST_OPENED_FILE, defaultLastOpenedFile)
+		}
+		return this.lastOpenedFile
+	}
+
+	private def nameLastOpenedFile : String {
+		name(PREFERENCES_CATEGORY_FILESYSTEM, PREFERENCES_GROUP_FILESYSTEM_PREFERREDFILES, LAST_OPENED_FILE)
+	}
+
+	private def defaultLastOpenedFile : File {
+		nameLastOpenedFile.prefFile
+	}
+
+	private def rereadLastOpenedFile {
+		if (this.lastOpenedFile !== null) {
+			this.lastOpenedFile.set(defaultLastOpenedFile)
+		}
+	}
+
+	private def saveLastOpenedFile {
+		if (this.lastOpenedFile !== null) {
+			var file = this.lastOpenedFile.get
+			if (file === null) {
+				writeStore.remove(nameLastOpenedFile)
+			} else {
+				var str = this.gson.toJson(file)
+				writeStore.put(nameLastOpenedFile, str)
+			}
+		}
+	}
+
+	override getLastOpenedFile : File {
+		lastOpenedFileProperty.get
+	}
+
+	override setLastOpenedFile(file : File) {
+		lastOpenedFileProperty.set(file)
+	}
+
+	
+	
+	
+	var simulationStartTime : DoubleProperty
+
+	/** Replies the start time of the simulation
+	 */
+	def getSimulationStartTimeProperty : DoubleProperty {
+		if (this.simulationStartTime === null) {
+			this.simulationStartTime = new SimpleDoubleProperty(this, SIMULATION_START_TIME,
+				defaultSimulationStartTime) {
+				override invalidated {
+					var stopProp = getSimulationStopTimeProperty
+					val max = stopProp.get
+					val min = get
+					if (min < 0.0) {
+						getSimulationStartTimeProperty.set(min)
+					} else if (max < min && ( max >= 0.0 )) {
+						stopProp.set(min)
+					}
+				}
+			}
+		}
+		return this.simulationStartTime
+	}
+	
+	private def nameSimulationStartTime : String {
+		name(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME, SIMULATION_START_TIME)
+	}
+
+	private def defaultSimulationStartTime : double {
+		nameSimulationStartTime.prefDouble(SIMULATION_START_TIME_VALUE)
+	}
+
+	private def restoreSimulationStartTime {
+		simulationStartTimeProperty.set(SIMULATION_START_TIME_VALUE)
+	}
+
+	private def rereadSimulationStartTime {
+		if (this.simulationStartTime !== null) {
+			this.simulationStartTime.set(defaultSimulationStartTime)
+		}
+	}
+
+	private def saveSimulationStartTime {
+		if (this.simulationStartTime !== null) {
+			writeStore.putDouble(nameSimulationStartTime, this.simulationStartTime.get)
+		}
+	}
+
+	override getSimulationStartTime : double {
+		simulationStartTimeProperty.get
+	}
+
+	override setSimulationStartTime(time : double) {
+		simulationStartTimeProperty.set(time)
+	}
+
+
+
+	var simulationStopTime : DoubleProperty
+
+	/** Replies the property for storing the stop time of the simulation
+	 */
+	def getSimulationStopTimeProperty : DoubleProperty {
+		if (this.simulationStopTime === null) {
+			this.simulationStopTime = new SimpleDoubleProperty(this, SIMULATION_STOP_TIME,
+				defaultSimulationStopTime) {
+				override invalidated {
+					val max = get
+					if (!max.isNaN && ( max >= 0.0 )) {
+						var startProp = getSimulationStartTimeProperty
+						val min = startProp.get
+						if (max < min) {
+							startProp.set(max)
+						}
+					}
+				}
+			}
+		}
+		return this.simulationStopTime
+	}
+
+	private def nameSimulationStopTime : String {
+		name(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME, SIMULATION_STOP_TIME)
+	}
+
+	private def defaultSimulationStopTime : double {
+		nameSimulationStopTime.prefDouble(SIMULATION_STOP_TIME_VALUE)
+	}
+
+	private def restoreSimulationStopTime {
+		simulationStopTimeProperty.set(SIMULATION_STOP_TIME_VALUE)
+	}
+
+	private def rereadSimulationStopTime {
+		if (this.simulationStopTime !== null) {
+			this.simulationStopTime.set(defaultSimulationStopTime)
+		}
+	}
+
+	private def saveSimulationStopTime {
+		if (this.simulationStopTime !== null) {
+			writeStore.putDouble(nameSimulationStopTime, this.simulationStopTime.get)
+		}
+	}
+
+	override getSimulationStopTime : double {
+		simulationStopTimeProperty.get
+	}
+
+	def setSimulationStopTime(time : double) {
+		simulationStopTimeProperty.set(time)
+	}
+
+
+
+
+	var simulationStepDuration : DoubleProperty
+
+	/** Replies the property for storing the simulation step duration
+	 */
+	def getSimulationStepDurationProperty : DoubleProperty {
+		if (this.simulationStepDuration === null) {
+			this.simulationStepDuration = new SimpleDoubleProperty(this, SIMULATION_TIME_STEP,
+				defaultSimulationStepDuration) {
+				override invalidated {
+					val step = get
+					if (step <= 0.0) {
+						getSimulationStepDurationProperty.set(SIMULATION_TIME_STEP_VALUE)
+					}
+				}
+			}
+		}
+		return this.simulationStepDuration
+	}
+
+	private def nameSimulationStepDuration : String {
+		name(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME, SIMULATION_TIME_STEP)
+	}
+
+	private def defaultSimulationStepDuration : double {
+		nameSimulationStepDuration.prefDouble(SIMULATION_TIME_STEP_VALUE)
+	}
+
+	private def restoreSimulationStepDuration {
+		simulationStepDurationProperty.set(SIMULATION_TIME_STEP_VALUE)
+	}
+
+	private def rereadSimulationStepDuration {
+		if (this.simulationStepDuration !== null) {
+			this.simulationStepDuration.set(defaultSimulationStepDuration)
+		}
+	}
+
+	private def saveSimulationStepDuration {
+		if (this.simulationStepDuration !== null) {
+			writeStore.putDouble(nameSimulationStepDuration, this.simulationStepDuration.get)
+		}
+	}
+
+	override getSimulationStepDuration : double {
+		simulationStepDurationProperty.get
+	}
+
+	override setSimulationStepDuration(time : double) {
+		simulationStepDurationProperty.set(time)
+	}
+
+
+
+
+	var simulationLoopDelay : IntegerProperty
+
+	/** Replies the property for storing the delay to apply to a simulation loop.
+	 */
+	def getSimulationLoopDelayProperty : IntegerProperty {
+		if (this.simulationLoopDelay === null) {
+			this.simulationLoopDelay = new SimpleIntegerProperty(this, SIMULATION_LOOP_DELAY,
+				defaultSimulationLoopDelay) {
+				override invalidated {
+					val step = get
+					if (step <= 0l) {
+						getSimulationStepDurationProperty.set(0l)
+					}
+				}
+			}
+		}
+		return this.simulationLoopDelay
+	}
+
+	private def nameSimulationLoopDelay : String {
+		name(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME, SIMULATION_LOOP_DELAY)
+	}
+
+	private def defaultSimulationLoopDelay : int {
+		nameSimulationLoopDelay.prefInt(SIMULATION_LOOP_DELAY_VALUE)
+	}
+
+	private def restoreSimulationLoopDelay {
+		simulationLoopDelayProperty.set(SIMULATION_LOOP_DELAY_VALUE)
+	}
+
+	private def rereadSimulationLoopDelay {
+		if (this.simulationLoopDelay !== null) {
+			this.simulationLoopDelay.set(defaultSimulationLoopDelay)
+		}
+	}
+
+	private def saveSimulationLoopDelay {
+		if (this.simulationLoopDelay !== null) {
+			writeStore.putDouble(nameSimulationLoopDelay, this.simulationLoopDelay.get)
+		}
+	}
+
+	override getSimulationLoopDelay : int {
+		simulationLoopDelayProperty.get
+	}
+
+	override setSimulationLoopDelay(delay : int) {
+		simulationLoopDelayProperty.set(delay)
+	}
+
+
+
+
+	var simulationDefaultOsTimeFactor : DoubleProperty
+
+	/** Replies the property for storing the delay to apply to a simulation loop.
+	 */
+	def getSimulationDefaultOsTimeFactorProperty : DoubleProperty {
+		if (this.simulationDefaultOsTimeFactor === null) {
+			this.simulationDefaultOsTimeFactor = new SimpleDoubleProperty(this, SIMULATION_DEFAULT_OS_TIME_FACTOR,
+				defaultSimulationDefaultOsTimeFactor) {
+				override invalidated {
+					val step = get
+					if (step <= 0.0) {
+						getSimulationStepDurationProperty.set(0.00001)
+					}
+				}
+			}
+		}
+		return this.simulationDefaultOsTimeFactor
+	}
+
+	private def nameSimulationDefaultOsTimeFactor : String {
+		name(PREFERENCES_CATEGORY_SIMULATION, PREFERENCES_GROUP_SIMULATION_TIME,
+			SIMULATION_DEFAULT_OS_TIME_FACTOR)
+	}
+
+	private def defaultSimulationDefaultOsTimeFactor : double {
+		nameSimulationDefaultOsTimeFactor.prefDouble(SIMULATION_DEFAULT_OS_TIME_FACTOR_VALUE)
+	}
+
+	private def restoreSimulationDefaultOsTimeFactor {
+		simulationDefaultOsTimeFactorProperty.set(SIMULATION_DEFAULT_OS_TIME_FACTOR_VALUE)
+	}
+
+	private def rereadSimulationDefaultOsTimeFactor {
+		if (this.simulationDefaultOsTimeFactor !== null) {
+			this.simulationDefaultOsTimeFactor.set(defaultSimulationDefaultOsTimeFactor)
+		}
+	}
+
+	private def saveSimulationDefaultOsTimeFactor {
+		if (this.simulationDefaultOsTimeFactor !== null) {
+			writeStore.putDouble(nameSimulationDefaultOsTimeFactor, this.simulationDefaultOsTimeFactor.get)
+		}
+	}
+
+	override getSimulationDefaultOsTimeFactor : double {
+		simulationDefaultOsTimeFactorProperty.get
+	}
+
+	override setSimulationDefaultOsTimeFactor(factor : double) {
+		simulationDefaultOsTimeFactorProperty.set(factor)
+	}
+
+
+
+
+	var logErrorColor : IntegerProperty
+
+	/** Replies the property for storing the color of the error messages.
+	 */
+	def getLogErrorColorProperty : IntegerProperty {
+		if (this.logErrorColor === null) {
+			this.logErrorColor = new SimpleIntegerProperty(
+				this,
+				LOG_ERROR_COLOR, defaultLogErrorColor)
+		}
+		return this.logErrorColor
+	}
+
+	private def nameLogErrorColor : String {
+		name(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_COLORS, LOG_ERROR_COLOR)
+	}
+
+	private def defaultLogErrorColor : int {
+		nameLogErrorColor.prefInt(LOG_ERROR_COLOR_VALUE)
+	}
+
+	private def restoreLogErrorColor {
+		logErrorColorProperty.set(LOG_ERROR_COLOR_VALUE)
+	}
+
+	private def rereadLogErrorColor {
+		if (this.logErrorColor !== null) {
+			this.logErrorColor.set(defaultLogErrorColor)
+		}
+	}
+
+	private def saveLogErrorColor {
+		if (this.logErrorColor !== null) {
+			writeStore.putInt(nameLogErrorColor, this.logErrorColor.get)
+		}
+	}
+
+	
+	def getLogErrorColor : int {
+		this.logErrorColorProperty.get
+	}
+	
+	def setLogErrorColor(color : int) {
+		this.logErrorColorProperty.set(color)
+	}
+
+
+
+	var logWarningColor : IntegerProperty
+
+	/** Replies the property for storing the color of the warning messages.
+	 */
+	def getLogWarningColorProperty : IntegerProperty {
+		if (this.logWarningColor === null) {
+			this.logWarningColor = new SimpleIntegerProperty(
+				this,
+				LOG_WARNING_COLOR, defaultLogWarningColor)
+		}
+		return this.logWarningColor
+	}
+
+	private def nameLogWarningColor : String {
+		name(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_COLORS, LOG_WARNING_COLOR)
+	}
+
+	private def defaultLogWarningColor : int {
+		nameLogWarningColor.prefInt(LOG_WARNING_COLOR_VALUE)
+	}
+
+	private def restoreLogWarningColor {
+		logWarningColorProperty.set(LOG_WARNING_COLOR_VALUE)
+	}
+
+	private def rereadLogWarningColor {
+		if (this.logWarningColor !== null) {
+			this.logWarningColor.set(defaultLogWarningColor)
+		}
+	}
+
+	private def saveLogWarningColor {
+		if (this.logWarningColor !== null) {
+			writeStore.putInt(nameLogWarningColor, this.logWarningColor.get)
+		}
+	}
+
+	def getLogWarningColor : int {
+		this.logWarningColorProperty.get
+	}
+	
+	def setLogWarningColor(color : int) {
+		this.logWarningColorProperty.set(color)
+	}
+
+
+
+
+	var logInfoColor : IntegerProperty
+
+	/** Replies the property for storing the color of the information messages.
+	 */
+	def getLogInfoColorProperty : IntegerProperty {
+		if (this.logInfoColor === null) {
+			this.logInfoColor = new SimpleIntegerProperty(
+				this,
+				LOG_INFO_COLOR, defaultLogInfoColor)
+		}
+		return this.logInfoColor
+	}
+
+	private def nameLogInfoColor : String {
+		name(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_COLORS, LOG_INFO_COLOR)
+	}
+
+	private def defaultLogInfoColor : int {
+		nameLogInfoColor.prefInt(LOG_INFO_COLOR_VALUE)
+	}
+
+	private def restoreLogInfoColor {
+		logInfoColorProperty.set(LOG_INFO_COLOR_VALUE)
+	}
+
+	private def rereadLogInfoColor {
+		if (this.logInfoColor !== null) {
+			this.logInfoColor.set(defaultLogInfoColor)
+		}
+	}
+
+	private def saveLogInfoColor {
+		if (this.logInfoColor !== null) {
+			writeStore.putInt(nameLogInfoColor, this.logInfoColor.get)
+		}
+	}
+
+	def getLogInfoColor : int {
+		this.logInfoColorProperty.get
+	}
+	
+	def setLogInfoColor(color : int) {
+		this.logInfoColorProperty.set(color)
+	}
+
+
+
+
+	var logOnConsole : BooleanProperty
+
+	/** Replies the property for storing the flag for logging on console.
+	 */
+	def getLogOnConsoleProperty : BooleanProperty {
+		if (this.logOnConsole === null) {
+			this.logOnConsole = new SimpleBooleanProperty(
+				this,
+				LOG_ON_CONSOLE, defaultLogOnConsole)
+		}
+		return this.logOnConsole
+	}
+
+	private def nameLogOnConsole : String {
+		name(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_GENERAL, LOG_ON_CONSOLE)
+	}
+
+	private def defaultLogOnConsole : boolean {
+		nameLogOnConsole.prefBoolean(LOG_ON_CONSOLE_VALUE)
+	}
+
+	private def restoreLogOnConsole {
+		logOnConsoleProperty.set(LOG_ON_CONSOLE_VALUE)
+	}
+
+	private def rereadLogOnConsole {
+		if (this.logOnConsole !== null) {
+			this.logOnConsole.set(defaultLogOnConsole)
+		}
+	}
+
+	private def saveLogOnConsole {
+		if (this.logOnConsole !== null) {
+			writeStore.putBoolean(nameLogOnConsole, this.logOnConsole.get)
+		}
+	}
+
+	def getLogOnConsole : boolean {
+		this.logOnConsoleProperty.get
+	}
+
+	def setLogOnConsole(enable : boolean) {
+		this.logOnConsoleProperty.set(enable)
+	}
+
+
+
+
+
+
+	var enableUiConsole : BooleanProperty
+
+	/** Replies the property for storing the flag for logging on UI console.
+	 */
+	def getEnableUiConsoleProperty : BooleanProperty {
+		if (this.enableUiConsole === null) {
+			this.enableUiConsole = new SimpleBooleanProperty(this, ENABLE_UI_CONSOLE, defaultEnableUiConsole)
+		}
+		return this.enableUiConsole
+	}
+
+	private def nameEnableUiConsole : String {
+		name(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_GENERAL, ENABLE_UI_CONSOLE)
+	}
+
+	private def defaultEnableUiConsole : boolean {
+		nameEnableUiConsole.prefBoolean(ENABLE_UI_CONSOLE_VALUE)
+	}
+
+	private def restoreEnableUiConsole {
+		enableUiConsoleProperty.set(ENABLE_UI_CONSOLE_VALUE)
+	}
+
+	private def rereadEnableUiConsole {
+		if (this.enableUiConsole !== null) {
+			this.enableUiConsole.set(defaultEnableUiConsole)
+		}
+	}
+
+	private def saveEnableUiConsole {
+		if (this.enableUiConsole !== null) {
+			writeStore.putBoolean(nameEnableUiConsole, this.enableUiConsole.get)
+		}
+	}
+
+	def getEnableUiConsole : boolean {
+		this.enableUiConsoleProperty.get
+	}
+
+	def setEnableUiConsole(enable : boolean) {
+		this.enableUiConsoleProperty.set(enable)
+	}
+
+
+
+
+
+	public val CHART_X_RANGE_FACTOR = "chartXRangeFactor"
+
+	public val CHART_X_RANGE_FACTOR_VALUE = 20.0
+	
+	var chartXRangeFactor : DoubleProperty
+
+	/** Replies the property for storing the factor that is used for computing the max value along the X axis of the charts.
+	 */
+	def getChartXRangeFactorProperty : DoubleProperty {
+		if (this.chartXRangeFactor === null) {
+			this.chartXRangeFactor = new SimpleDoubleProperty(this, CHART_X_RANGE_FACTOR, defaultChartXRangeFactor) {
+				override invalidated {
+					val step = get
+					if (step < 0.0) {
+						set(Math.ulp(0.0))
+					}
+				}
+			}
+		}
+		return this.chartXRangeFactor
+	}
+
+	private def nameChartXRangeFactor : String {
+		name(PREFERENCES_CATEGORY_CHARTS, PREFERENCES_GROUP_CHARTS_GENERAL, CHART_X_RANGE_FACTOR)
+	}
+
+	private def defaultChartXRangeFactor : double {
+		nameChartXRangeFactor.prefDouble(CHART_X_RANGE_FACTOR_VALUE)
+	}
+
+	private def restoreChartXRangeFactor {
+		chartXRangeFactorProperty.set(CHART_X_RANGE_FACTOR_VALUE)
+	}
+
+	private def rereadChartXRangeFactor {
+		if (this.chartXRangeFactor !== null) {
+			this.chartXRangeFactor.set(defaultChartXRangeFactor)
+		}
+	}
+
+	private def saveChartXRangeFactor {
+		if (this.chartXRangeFactor !== null) {
+			writeStore.putDouble(nameChartXRangeFactor, this.chartXRangeFactor.get)
+		}
+	}
+
+	def getChartXRangeFactor : double {
+		this.chartXRangeFactorProperty.get
+	}
+
+	def setChartXRangeFactor(size : double) {
+		this.chartXRangeFactorProperty.set(size)
+	}
+
+
+
+
+
+	public val LOG_PANEL_REFRESH_DELAY = "logPanelRefreshDelay"
+
+	public val LOG_PANEL_REFRESH_DELAY_VALUE = 200
+
+	var logPanelRefreshDelay : IntegerProperty
+
+	/** Replies the property for storing the refresh delay for the log panel.
+	 */
+	def getLogPanelRefreshDelayProperty : IntegerProperty {
+		if (this.logPanelRefreshDelay === null) {
+			this.logPanelRefreshDelay = new SimpleIntegerProperty(this, LOG_PANEL_REFRESH_DELAY, defaultLogPanelRefreshDelay) {
+				override invalidated {
+					val step = get
+					if (step < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.logPanelRefreshDelay
+	}
+
+	private def nameLogPanelRefreshDelay : String {
+		name(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_LOGPANEL, LOG_PANEL_REFRESH_DELAY)
+	}
+
+	private def defaultLogPanelRefreshDelay : int {
+		nameLogPanelRefreshDelay.prefInt(LOG_PANEL_REFRESH_DELAY_VALUE)
+	}
+
+	private def restoreLogPanelRefreshDelay {
+		logPanelRefreshDelayProperty.set(LOG_PANEL_REFRESH_DELAY_VALUE)
+	}
+
+	private def rereadLogPanelRefreshDelay {
+		if (this.logPanelRefreshDelay !== null) {
+			this.logPanelRefreshDelay.set(defaultLogPanelRefreshDelay)
+		}
+	}
+
+	private def saveLogPanelRefreshDelay {
+		if (this.logPanelRefreshDelay !== null) {
+			writeStore.putInt(nameLogPanelRefreshDelay, this.logPanelRefreshDelay.get)
+		}
+	}
+
+	def getLogPanelRefreshDelay : int {
+		this.logPanelRefreshDelayProperty.get
+	}
+
+	def setLogPanelRefreshDelay(size : int) {
+		this.logPanelRefreshDelayProperty.set(size)
+	}
+
+
+
+
+	public val PROBE_PANEL_REFRESH_DELAY = "probePanelRefreshDelay"
+
+	public val PROBE_PANEL_REFRESH_DELAY_VALUE = 500
+
+	var probePanelRefreshDelay : IntegerProperty
+
+	/** Replies the property for storing the refresh delay for the probe panel.
+	 */
+	def getProbePanelRefreshDelayProperty : IntegerProperty {
+		if (this.probePanelRefreshDelay === null) {
+			this.probePanelRefreshDelay = new SimpleIntegerProperty(this, PROBE_PANEL_REFRESH_DELAY,
+				defaultProbePanelRefreshDelay) {
+				override invalidated {
+					val step = get
+					if (step < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.probePanelRefreshDelay
+	}
+
+	private def nameProbePanelRefreshDelay : String {
+		name(PREFERENCES_CATEGORY_CHARTS, PREFERENCES_GROUP_CHARTS_GENERAL, PROBE_PANEL_REFRESH_DELAY)
+	}
+
+	private def defaultProbePanelRefreshDelay : int {
+		nameProbePanelRefreshDelay.prefInt(PROBE_PANEL_REFRESH_DELAY_VALUE)
+	}
+
+	private def restoreProbePanelRefreshDelay {
+		probePanelRefreshDelayProperty.set(PROBE_PANEL_REFRESH_DELAY_VALUE)
+	}
+
+	private def rereadProbePanelRefreshDelay {
+		if (this.probePanelRefreshDelay !== null) {
+			this.probePanelRefreshDelay.set(defaultProbePanelRefreshDelay)
+		}
+	}
+
+	private def saveProbePanelRefreshDelay {
+		if (this.probePanelRefreshDelay !== null) {
+			writeStore.putInt(nameLogPanelRefreshDelay, this.probePanelRefreshDelay.get)
+		}
+	}
+
+	def getProbePanelRefreshDelay : int {
+		this.probePanelRefreshDelayProperty.get
+	}
+
+	def setProbePanelRefreshDelay(size : int) {
+		this.probePanelRefreshDelayProperty.set(size)
+	}
+
+
+
+
+
+	var uiConsoleBufferSize : IntegerProperty
+
+	/** Replies the number of lines that UI console is able to save in the memory.
+	 */
+	def getUiConsoleBufferSizeProperty : IntegerProperty {
+		if (this.uiConsoleBufferSize === null) {
+			this.uiConsoleBufferSize = new SimpleIntegerProperty(this, UI_CONSOLE_BUFFER_SIZE,
+				defaultUiConsoleBufferSize) {
+				override invalidated {
+					val step = get
+					if (step < 1) {
+						set(1)
+					}
+				}
+			}
+		}
+		return this.uiConsoleBufferSize
+	}
+
+	private def nameUiConsoleBufferSize : String {
+		name(PREFERENCES_CATEGORY_LOGGING, PREFERENCES_GROUP_LOGGING_GENERAL, UI_CONSOLE_BUFFER_SIZE)
+	}
+
+	private def defaultUiConsoleBufferSize : int {
+		nameUiConsoleBufferSize.prefInt(UI_CONSOLE_BUFFER_SIZE_VALUE)
+	}
+
+	private def restoreUiConsoleBufferSize {
+		uiConsoleBufferSizeProperty.set(UI_CONSOLE_BUFFER_SIZE_VALUE)
+	}
+
+	private def rereadUiConsoleBufferSize {
+		if (this.uiConsoleBufferSize !== null) {
+			this.uiConsoleBufferSize.set(defaultUiConsoleBufferSize)
+		}
+	}
+
+	private def saveUiConsoleBufferSize {
+		if (this.uiConsoleBufferSize !== null) {
+			writeStore.putInt(nameUiConsoleBufferSize, this.uiConsoleBufferSize.get)
+		}
+	}
+
+	def getUiConsoleBufferSize : int {
+		this.uiConsoleBufferSizeProperty.get
+	}
+
+	def setUiConsoleBufferSize(size : int) {
+		this.uiConsoleBufferSizeProperty.set(size)
+	}
+
+
+
+
+
+
+	var scaleIndicatorForegroundColor : IntegerProperty
+
+	/** Replies the property for storing the foreground color of the scale indicators.
+	 */
+	def getScaleIndicatorForegroundColorProperty : IntegerProperty {
+		if (this.scaleIndicatorForegroundColor === null) {
+			this.scaleIndicatorForegroundColor = new SimpleIntegerProperty(this, SCALE_INDICATOR_FOREGROUND_COLOR,
+				defaultScaleIndicatorForegroundColor)
+		}
+		return this.scaleIndicatorForegroundColor
+	}
+
+	private def nameScaleIndicatorForegroundColor : String {
+		name(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_COLORS, SCALE_INDICATOR_FOREGROUND_COLOR)
+	}
+
+	private def defaultScaleIndicatorForegroundColor : int {
+		nameScaleIndicatorForegroundColor.prefInt(SCALE_INDICATOR_FOREGROUND_COLOR_VALUE)
+	}
+
+	private def restoreScaleIndicatorForegroundColor {
+		scaleIndicatorForegroundColorProperty.set(SCALE_INDICATOR_FOREGROUND_COLOR_VALUE)
+	}
+
+	private def rereadScaleIndicatorForegroundColor {
+		if (this.scaleIndicatorForegroundColor !== null) {
+			this.scaleIndicatorForegroundColor.set(defaultScaleIndicatorForegroundColor)
+		}
+	}
+
+	private def saveScaleIndicatorForegroundColor {
+		if (this.scaleIndicatorForegroundColor !== null) {
+			writeStore.putInt(nameScaleIndicatorForegroundColor, this.scaleIndicatorForegroundColor.get)
+		}
+	}
+
+	def getScaleIndicatorForegroundColor : int {
+		this.scaleIndicatorForegroundColorProperty.get
+	}
+
+	def setScaleIndicatorForegroundColor(color : int) {
+		this.scaleIndicatorForegroundColorProperty.set(color)
+	}
+
+
+
+
+
+
+	var scaleIndicatorBackgroundColor1 : IntegerProperty
+
+	/** Replies the property for storing the first background color of the scale indicators.
+	 */
+	def getScaleIndicatorBackgroundColor1Property : IntegerProperty {
+		if (this.scaleIndicatorBackgroundColor1 === null) {
+			this.scaleIndicatorBackgroundColor1 = new SimpleIntegerProperty(this, SCALE_INDICATOR_BACKGROUND_COLOR1,
+				defaultScaleIndicatorBackgroundColor1)
+		}
+		return this.scaleIndicatorBackgroundColor1
+	}
+
+	private def nameScaleIndicatorBackgroundColor1 : String {
+		name(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_COLORS, SCALE_INDICATOR_BACKGROUND_COLOR1)
+	}
+
+	private def defaultScaleIndicatorBackgroundColor1 : int {
+		nameScaleIndicatorBackgroundColor1.prefInt(SCALE_INDICATOR_BACKGROUND_COLOR1_VALUE)
+	}
+
+	private def restoreScaleIndicatorBackgroundColor1 {
+		scaleIndicatorBackgroundColor1Property.set(SCALE_INDICATOR_BACKGROUND_COLOR1_VALUE)
+	}
+
+	private def rereadScaleIndicatorBackgroundColor1 {
+		if (this.scaleIndicatorBackgroundColor1 !== null) {
+			this.scaleIndicatorBackgroundColor1.set(defaultScaleIndicatorBackgroundColor1)
+		}
+	}
+
+	private def saveScaleIndicatorBackgroundColor1 {
+		if (this.scaleIndicatorBackgroundColor1 !== null) {
+			writeStore.putInt(nameScaleIndicatorBackgroundColor1, this.scaleIndicatorBackgroundColor1.get)
+		}
+	}
+
+	def getScaleIndicatorBackgroundColor1 : int {
+		this.scaleIndicatorBackgroundColor1Property.get
+	}
+
+	def setScaleIndicatorBackgroundColor1(color : int) {
+		this.scaleIndicatorBackgroundColor1Property.set(color)
+	}
+
+	
+	
+	
+	var scaleIndicatorBackgroundColor2 : IntegerProperty
+
+	/** Replies the property for storing the second background color of the scale indicators.
+	 */
+	def getScaleIndicatorBackgroundColor2Property : IntegerProperty {
+		if (this.scaleIndicatorBackgroundColor2 === null) {
+			this.scaleIndicatorBackgroundColor2 = new SimpleIntegerProperty(this, SCALE_INDICATOR_BACKGROUND_COLOR2,
+				defaultScaleIndicatorBackgroundColor2)
+		}
+		return this.scaleIndicatorBackgroundColor2
+	}
+
+	private def nameScaleIndicatorBackgroundColor2 : String {
+		name(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_COLORS, SCALE_INDICATOR_BACKGROUND_COLOR2)
+	}
+
+	private def defaultScaleIndicatorBackgroundColor2 : int {
+		nameScaleIndicatorBackgroundColor2.prefInt(SCALE_INDICATOR_BACKGROUND_COLOR2_VALUE)
+	}
+
+	private def restoreScaleIndicatorBackgroundColor2 {
+		scaleIndicatorBackgroundColor2Property.set(SCALE_INDICATOR_BACKGROUND_COLOR2_VALUE)
+	}
+
+	private def rereadScaleIndicatorBackgroundColor2 {
+		if (this.scaleIndicatorBackgroundColor2 !== null) {
+			this.scaleIndicatorBackgroundColor2.set(defaultScaleIndicatorBackgroundColor2)
+		}
+	}
+
+	private def saveScaleIndicatorBackgroundColor2 {
+		if (this.scaleIndicatorBackgroundColor2 !== null) {
+			writeStore.putInt(nameScaleIndicatorBackgroundColor2, this.scaleIndicatorBackgroundColor2.get)
+		}
+	}
+
+	def getScaleIndicatorBackgroundColor2 : int {
+		this.scaleIndicatorBackgroundColor2Property.get
+	}
+
+	def setScaleIndicatorBackgroundColor2(color : int) {
+		this.scaleIndicatorBackgroundColor2Property.set(color)
+	}
+
+
+
+
+
+
+
+	var scaleIndicatorPenSize : DoubleProperty
+
+	/** Replies the property for storing the size of the pen that is used to draw the scale indicator.
+	 */
+	def getScaleIndicatorPenSizeProperty : DoubleProperty {
+		if (this.scaleIndicatorPenSize === null) {
+			this.scaleIndicatorPenSize = new SimpleDoubleProperty(this, SCALE_INDICATOR_PEN_SIZE,
+				defaultScaleIndicatorPenSize) {
+				override invalidated {
+					val step = get
+					if (step < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.scaleIndicatorPenSize
+	}
+
+	private def nameScaleIndicatorPenSize : String {
+		name(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR, SCALE_INDICATOR_PEN_SIZE)
+	}
+
+	private def defaultScaleIndicatorPenSize : double {
+		nameScaleIndicatorPenSize.prefDouble(SCALE_INDICATOR_PEN_SIZE_VALUE)
+	}
+
+	private def restoreScaleIndicatorPenSize {
+		scaleIndicatorPenSizeProperty.set(SCALE_INDICATOR_PEN_SIZE_VALUE)
+	}
+
+	private def rereadScaleIndicatorPenSize {
+		if (this.scaleIndicatorPenSize !== null) {
+			this.scaleIndicatorPenSize.set(defaultScaleIndicatorPenSize)
+		}
+	}
+
+	private def saveScaleIndicatorPenSize {
+		if (this.scaleIndicatorPenSize !== null) {
+			writeStore.putDouble(nameScaleIndicatorPenSize, this.scaleIndicatorPenSize.get)
+		}
+	}
+
+	def getScaleIndicatorPenSize : double {
+		this.scaleIndicatorPenSizeProperty.get
+	}
+
+	def setScaleIndicatorPenSize(size : double) {
+		this.scaleIndicatorPenSizeProperty.set(size)
+	}
+
+
+
+
+
+	var scaleIndicatorMinFontSize : DoubleProperty
+
+	/** Replies the property for storing the minimum size of the font that is used to draw the scale indicator.
+	 */
+	def getScaleIndicatorMinFontSizeProperty : DoubleProperty {
+		if (this.scaleIndicatorMinFontSize === null) {
+			this.scaleIndicatorMinFontSize = new SimpleDoubleProperty(this, SCALE_INDICATOR_MIN_FONT_SIZE,
+				defaultScaleIndicatorMinFontSize) {
+				override invalidated {
+					val step = get
+					if (step < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.scaleIndicatorMinFontSize
+	}
+
+	private def nameScaleIndicatorMinFontSize : String {
+		name(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR, SCALE_INDICATOR_MIN_FONT_SIZE)
+	}
+
+	private def defaultScaleIndicatorMinFontSize : double {
+		nameScaleIndicatorMinFontSize.prefDouble(SCALE_INDICATOR_MIN_FONT_SIZE_VALUE)
+	}
+
+	private def restoreScaleIndicatorMinFontSize {
+		scaleIndicatorMinFontSizeProperty.set(SCALE_INDICATOR_MIN_FONT_SIZE_VALUE)
+	}
+
+	private def rereadScaleIndicatorMinFontSize {
+		if (this.scaleIndicatorMinFontSize !== null) {
+			this.scaleIndicatorMinFontSize.set(defaultScaleIndicatorPenSize)
+		}
+	}
+
+	private def saveScaleIndicatorMinFontSize {
+		if (this.scaleIndicatorMinFontSize !== null) {
+			writeStore.putDouble(nameScaleIndicatorMinFontSize, this.scaleIndicatorMinFontSize.get)
+		}
+	}
+
+	def getScaleIndicatorMinFontSize : double {
+		this.scaleIndicatorMinFontSizeProperty.get
+	}
+
+	def setScaleIndicatorMinFontSize(size : double) {
+		this.scaleIndicatorMinFontSizeProperty.set(size)
+	}
+
+
+
+
+
+
+	var scaleIndicatorWidth : DoubleProperty
+
+	/** Replies the property for storing the width of the scale indicator.
+	 */
+	def getScaleIndicatorWidthProperty : DoubleProperty {
+		if (this.scaleIndicatorWidth === null) {
+			this.scaleIndicatorWidth = new SimpleDoubleProperty(this, SCALE_INDICATOR_WIDTH,
+				defaultScaleIndicatorWidth) {
+				override invalidated {
+					val step = get
+					if (step < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.scaleIndicatorWidth
+	}
+
+	private def nameScaleIndicatorWidth : String {
+		name(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR, SCALE_INDICATOR_WIDTH)
+	}
+
+	private def defaultScaleIndicatorWidth : double {
+		nameScaleIndicatorWidth.prefDouble(SCALE_INDICATOR_WIDTH_VALUE)
+	}
+
+	private def restoreScaleIndicatorWidth {
+		scaleIndicatorWidthProperty.set(SCALE_INDICATOR_WIDTH_VALUE)
+	}
+
+	private def rereadScaleIndicatorWidth {
+		if (this.scaleIndicatorWidth !== null) {
+			this.scaleIndicatorWidth.set(defaultScaleIndicatorWidth)
+		}
+	}
+
+	private def saveScaleIndicatorWidth {
+		if (this.scaleIndicatorWidth !== null) {
+			writeStore.putDouble(nameScaleIndicatorWidth, this.scaleIndicatorWidth.get)
+		}
+	}
+
+	def getScaleIndicatorWidth : double {
+		this.scaleIndicatorWidthProperty.get
+	}
+
+	def setScaleIndicatorWidth(size : double) {
+		this.scaleIndicatorWidthProperty.set(size)
+	}
+
+
+
+
+
+
+	var scaleIndicatorHeight : DoubleProperty
+
+	/** Replies the property for storing the height of the scale indicator.
+	 */
+	def getScaleIndicatorHeightProperty : DoubleProperty {
+		if (this.scaleIndicatorHeight === null) {
+			this.scaleIndicatorHeight = new SimpleDoubleProperty(this, SCALE_INDICATOR_HEIGHT,
+				defaultScaleIndicatorHeight) {
+				override invalidated {
+					val step = get
+					if (step < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.scaleIndicatorHeight
+	}
+
+	private def nameScaleIndicatorHeight : String {
+		name(PREFERENCES_CATEGORY_MAP, PREFERENCES_GROUP_MAP_SCALE_INDICATOR, SCALE_INDICATOR_HEIGHT)
+	}
+
+	private def defaultScaleIndicatorHeight : double {
+		nameScaleIndicatorHeight.prefDouble(SCALE_INDICATOR_HEIGH_VALUE)
+	}
+
+	private def restoreScaleIndicatorHeight {
+		scaleIndicatorHeightProperty.set(SCALE_INDICATOR_HEIGH_VALUE)
+	}
+
+	private def rereadScaleIndicatorHeight {
+		if (this.scaleIndicatorHeight !== null) {
+			this.scaleIndicatorHeight.set(defaultScaleIndicatorHeight)
+		}
+	}
+
+	private def saveScaleIndicatorHeight {
+		if (this.scaleIndicatorHeight !== null) {
+			writeStore.putDouble(nameScaleIndicatorHeight, this.scaleIndicatorHeight.get)
+		}
+	}
+
+	def getScaleIndicatorHeight : double {
+		this.scaleIndicatorHeightProperty.get
+	}
+
+	def setScaleIndicatorHeight(size : double) {
+		this.scaleIndicatorHeightProperty.set(size)
+	}
+
+
+
+
+	var humanEstimationModel : ObjectProperty<HumanEstimationModel>
+	var humanEstimationModelValues : ListProperty<HumanEstimationModel>
+
+	/** Replies the type of human estimation model to be used by default.
+	 */
+	def getHumanEstimationModelProperty : ObjectProperty<HumanEstimationModel> {
+		if (this.humanEstimationModel === null) {
+			this.humanEstimationModel = new SimpleObjectProperty(this, HUMAN_ESTIMATION_MODEL, defaultHumanEstimationModel)
+		}
+		return this.humanEstimationModel
+	}
+
+	/** Replies the list of possible values to be selected.
+	 */
+	def humanEstimationModelAvailableValues : ListProperty<HumanEstimationModel> {
+		if (this.humanEstimationModelValues === null) {
+			var list = new ImmutableObservableList(HumanEstimationModel::values)
+			this.humanEstimationModelValues = new SimpleListProperty(list)
+		}
+		return this.humanEstimationModelValues
+	}
+
+	private def nameHumanEstimationModel : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, HUMAN_ESTIMATION_MODEL)
+	}
+
+	private def defaultHumanEstimationModel : HumanEstimationModel {
+		nameHumanEstimationModel.prefEnum(typeof(HumanEstimationModel), HUMAN_ESTIMATION_MODEL_VALUE)
+	}
+
+	private def restoreHumanEstimationModel {
+		humanEstimationModelProperty.set(HUMAN_ESTIMATION_MODEL_VALUE)
+	}
+
+	private def rereadHumanEstimationModel {
+		if (this.humanEstimationModel !== null) {
+			this.humanEstimationModel.set(defaultHumanEstimationModel)
+		}
+	}
+
+	private def saveHumanEstimationModel {
+		if (this.humanEstimationModel !== null) {
+			writeStore.put(nameHumanEstimationModel, EnumJsonTypeAdapter::getJsonValue(this.humanEstimationModel.get))
+		}
+	}
+
+	def getHumanEstimationModel : HumanEstimationModel {
+		this.humanEstimationModelProperty.get
+	}
+
+	def setHumanEstimationModel(model : HumanEstimationModel) {
+		this.humanEstimationModelProperty.set(model)
+	}
+
+	/** 
+	 * Preferences backed to a simulation scenario.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	private static class ScenarioPreferences extends Preferences {
+
+		val original : Preferences
+
+		val prefs : Map<String, String>
+
+		new (original : Preferences, prefs : Map<String, String>) {
+			this.original = original
+			this.prefs = prefs
+		}
+
+		def getOverridingPreferences : Map<String, String> {
+			this.prefs
+		}
+
+		def absolutePath : String {
+			this.original.absolutePath
+		}
+		
+		def addNodeChangeListener(ncl : NodeChangeListener) {
+			this.original.addNodeChangeListener(ncl)
+		}
+		
+		def addPreferenceChangeListener(pcl : PreferenceChangeListener) {
+			this.original.addPreferenceChangeListener(pcl)
+		}
+		
+		def childrenNames : String[] throws BackingStoreException {
+			this.original.childrenNames
+		}
+		
+		def clear throws BackingStoreException {
+			throw new UnsupportedOperationException
+		}
+		
+		def exportNode(os : OutputStream) throws IOException, BackingStoreException {
+			throw new UnsupportedOperationException
+		}
+		
+		def exportSubtree(os : OutputStream) throws IOException, BackingStoreException {
+			throw new UnsupportedOperationException
+		}
+		
+		def flush throws BackingStoreException {
+			this.original.flush
+		}
+
+		@SuppressWarnings("potential_inefficient_value_conversion")
+		def get(key : String, ^def : String) : String {
+			var value = this.prefs.get(key)
+			if (value !== null) {
+				return value as String
+			}
+			val base = basename(key)
+			value = this.prefs.get(base)
+			if (value !== null) {
+				return value as String
+			}
+			return this.original.get(key, ^def)
+		}
+		
+		def getBoolean(key : String, ^def : boolean) : boolean {
+			val value = get(key, null)
+			if (value !== null) {
+            	if (value.equalsIgnoreCase("true")) {
+                	return true
+               	}
+                if (value.equalsIgnoreCase("false")) {
+                	return false
+                }
+			}
+			return ^def
+		}
+		
+		def getByteArray(key : String, ^def : byte[]) : byte[] {
+			this.original.getByteArray(key, ^def)
+		}
+		
+		def getDouble(key : String, ^def : double) : double {
+			val value = get(key, null)
+			if (value !== null) {
+				try {
+					return Double.parseDouble(value)
+				} catch (exception : NumberFormatException) {
+					// Ignoring exception causes specified default to be returned
+				}
+			}
+			return ^def
+		}
+
+		def getFloat(key : String, ^def : float) : float {
+			val value = get(key, null)
+			if (value !== null) {
+				try {
+					return Float.parseFloat(value)
+				} catch (exception : NumberFormatException) {
+					// Ignoring exception causes specified default to be returned
+				}
+			}
+			return ^def
+		}
+		
+		def getInt(key : String, ^def : int) : int {
+			val value = get(key, null)
+			if (value !== null) {
+				try {
+					return Integer.parseInt(value)
+				} catch (exception : NumberFormatException) {
+					// Ignoring exception causes specified default to be returned
+				}
+			}
+			return ^def
+		}
+		
+		def getLong(key : String, ^def : long) : long {
+			val value = get(key, null)
+			if (value !== null) {
+				try {
+					return Long.parseLong(value)
+				} catch (exception : NumberFormatException) {
+					// Ignoring exception causes specified default to be returned
+				}
+			}
+			return ^def
+		}
+		
+		def isUserNode : boolean {
+			this.original.isUserNode
+		}
+		
+		def keys : String[] throws BackingStoreException {
+			val keys = newTreeSet(null)
+			keys.addAll(this.prefs.keySet)
+			keys.addAll(this.original.keys)
+			return keys
+		}
+		
+		def name : String {
+			this.original.name
+		}
+		
+		def node(pathName : String) : Preferences {
+			this.original.node(pathName)
+		}
+		
+		def nodeExists(pathName : String) : boolean {
+			this.original.nodeExists(pathName)
+		}
+		
+		def parent : Preferences {
+			this.original
+		}
+		
+		def put(key : String, value : String) {
+			throw new UnsupportedOperationException
+		}
+		
+		def putBoolean(key : String, value : boolean) {
+			throw new UnsupportedOperationException
+		}
+		
+		def putByteArray(key : String, value : byte[]) {
+			throw new UnsupportedOperationException
+		}
+		
+		def putDouble(key : String, value : double) {
+			throw new UnsupportedOperationException
+		}
+		
+		def putFloat(key : String, value : float) {
+			throw new UnsupportedOperationException
+		}
+		
+		def putInt(key : String, value : int) {
+			throw new UnsupportedOperationException
+		}
+		
+		def putLong(key : String, value : long) {
+			throw new UnsupportedOperationException
+		}
+		
+		def remove(key : String) {
+			throw new UnsupportedOperationException
+		}
+		
+		def removeNode throws BackingStoreException {
+			throw new UnsupportedOperationException
+		}
+		
+		def removeNodeChangeListener(ncl : NodeChangeListener) {
+			this.original.removeNodeChangeListener(ncl)
+		}
+		
+		def removePreferenceChangeListener(pcl : PreferenceChangeListener) {
+			this.original.removePreferenceChangeListener(pcl)
+		}
+		
+		def sync throws BackingStoreException {
+			this.original.sync
+		}
+		
+		def toString : String {
+			this.original.toString
+		}
+		
+	}
+
+}

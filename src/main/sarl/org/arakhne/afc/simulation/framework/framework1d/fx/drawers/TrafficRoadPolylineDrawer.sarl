@@ -1,0 +1,95 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.fx.drawers
+
+import java.util.ArrayList
+import java.util.Collection
+import javafx.scene.paint.Color
+import org.arakhne.afc.gis.road.RoadPolyline
+import org.arakhne.afc.gis.road.ui.drawers.RoadPolylineDrawer
+import org.arakhne.afc.math.geometry.d2.d.Point2d
+import org.arakhne.afc.math.geometry.d2.d.Vector2d
+import org.arakhne.afc.nodefx.LevelOfDetails
+import org.arakhne.afc.nodefx.ZoomableGraphicsContext
+import org.arakhne.afc.simulation.framework.framework1d.environment.MobileRoadObject
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+import static extension org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d.*
+
+/** Drawer of the roads and the traffic.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class TrafficRoadPolylineDrawer extends RoadPolylineDrawer {
+
+	var carColor : Color
+
+	var crashedCarColor : Color
+
+	var carDrawer : CarDrawer
+
+	def getCarDrawer : CarDrawer {
+		if (this.carDrawer === null) {
+			this.carDrawer = new CarDrawer
+		}
+		return this.carDrawer
+	}
+
+	def getCarColor(gc : ZoomableGraphicsContext) : Color {
+		if (this.carColor === null) {
+			var c = typeof(PreferenceManager1d).singleton.carColor
+			this.carColor = gc.rgb(c)
+		}
+		return this.carColor
+	}
+
+	def getCrashedCarColor(gc : ZoomableGraphicsContext) : Color {
+		if (this.crashedCarColor === null) {
+			var c = typeof(PreferenceManager1d).singleton.crashedCarColor
+			this.crashedCarColor = gc.rgb(c)
+		}
+		return this.crashedCarColor
+	}
+
+	override draw(gc : ZoomableGraphicsContext, element : RoadPolyline) {
+		if (gc.state === TrafficRoadNetworkDrawer::DRAWING_STATE_VEHICLES
+			&& gc.levelOfDetails !== LevelOfDetails::LOW) {
+			var ovehicles : Collection<? extends MobileRoadObject> = element.getMobileObjects(typeof(MobileRoadObject))
+			var cvehicles = new ArrayList(ovehicles)
+			if (!cvehicles.empty) {
+				val position2d = new Point2d
+				val tangent2d = new Vector2d
+				var c0 = gc.carColor
+				var c1 = gc.crashedCarColor
+
+				for (vehicle : cvehicles) {
+					getCarDrawer.drawVehicle(vehicle, gc, element, c0, c1, position2d, tangent2d)
+				}
+			}
+		} else {
+			super.draw(gc, element)
+		}
+	}
+
+}

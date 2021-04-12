@@ -1,0 +1,221 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.fx.controls
+
+import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicBoolean
+import javafx.beans.property.DoubleProperty
+import javafx.beans.property.SimpleDoubleProperty
+import javafx.beans.value.ChangeListener
+import javafx.scene.chart.Axis
+import javafx.scene.chart.LineChart
+import javafx.scene.chart.NumberAxis
+import org.arakhne.afc.math.DoubleRange
+import org.arakhne.afc.simulation.framework.base.config.TimeConfig
+import org.arakhne.afc.simulation.framework.base.fx.preferences.AbstractFxPreferenceManager
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+
+/** A line chart that updates its data range dynamically.
+ * 
+ * @param <Y> the type of the data along Y axis.
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class DynamicLineChart<Y> extends LineChart<Number, Y> {
+
+	val init = new AtomicBoolean(false)
+
+	var dataXrangeSize : DoubleProperty
+
+	var dataXUnitSize : DoubleProperty
+
+	var dataRangeXmin : DoubleProperty
+
+	var dataRangeXmax : DoubleProperty
+
+	val timeConfig : WeakReference<TimeConfig>
+
+	val xAxis : NumberAxis
+
+	/** Constructor.
+	 *
+	 * @param timeConfig the time configuration.
+	 * @param xAxis the x axis
+	 * @param yAxis the y axis.
+	 */
+	new(timeConfig : TimeConfig, xAxis : NumberAxis, yAxis : Axis<Y>) {
+		super(xAxis, yAxis)
+
+		assert timeConfig !== null
+		this.timeConfig = new WeakReference(timeConfig)
+		this.xAxis = xAxis
+
+		xAxis.autoRanging = false
+		xAxis.lowerBound = timeConfig.start
+		xAxis.upperBound = timeConfig.start + getDataXRangeSize
+	}
+
+	protected override seriesAdded(series : Series<Number, Y>, seriesIndex : int) {
+		val data = series.data
+		if (data instanceof DataRangeable) {
+			data.rangeSizeProperty.bind(dataXRangeSizeProperty)
+		}
+		super.seriesAdded(series, seriesIndex)
+	}
+
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	protected override dataItemAdded(series : Series<Number, Y>, itemIndex : int, item : Data<Number, Y>) {
+		super.dataItemAdded(series, itemIndex, item)
+		if (!this.init.getAndSet(true)) {
+			var range = getPreferredMinMaxDataXValues
+			setDataRangeXmax = range.max
+		} else if (item.XValue > getDataRangeXmax) {
+			setDataRangeXmax = item.XValue as double
+		}
+	}
+
+	/** Replies the min and max X values from the series.
+	 *
+	 * @return the preferred range for x values, or {@code null} if it cannot be computed. 
+	 */
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	protected def getPreferredMinMaxDataXValues : DoubleRange {
+		var found = false
+		var max = Double::NEGATIVE_INFINITY
+		for (series : this.data) {
+			for (data : series.data) {
+				found = true
+				var v = data.XValue as double
+				if (v > max) {
+					max = v
+				}
+			}
+		}
+		if (found) {
+			var size = dataXRangeSizeProperty.get
+			var min = max - size
+			var start = this.timeConfig.get.start
+			if (min < start) {
+				min = start
+				max = min + size
+			}
+			return new DoubleRange(min, max)
+		}
+		return null
+	}
+
+	/** Replies the minimal x coordinate of the data range.
+	 */
+	def dataRangeXminProperty : DoubleProperty {
+		if (this.dataRangeXmin === null) {
+			this.dataRangeXmin = new SimpleDoubleProperty(this, "dataRangeXmin")
+			this.xAxis.lowerBoundProperty.bind(this.dataRangeXmin)
+		}
+		return this.dataRangeXmin
+	}
+
+	/** Replies the minimal x coordinate of the data range.
+	 */
+	def getDataRangeXmin : double {
+		dataRangeXminProperty.get
+	}
+
+	/** Change the minimal x coordinate of the data range.
+	 */
+	def setDataRangeXmin(x : double) {
+		dataRangeXminProperty.set(x)
+	}
+
+	/** Replies the maximal x coordinate of the data range.
+	 */
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	def dataRangeXmaxProperty : DoubleProperty {
+		if (this.dataRangeXmax === null) {
+			this.dataRangeXmax = new SimpleDoubleProperty(this, "dataRangeXmax")
+			var listener : ChangeListener<? super Number>
+			listener = [ observable, oldValue, newValue |
+				val newMin = newValue as double - getDataXRangeSize
+				setDataRangeXmin(newMin)
+			]
+			this.dataRangeXmax.addListener(listener)
+			this.xAxis.upperBoundProperty.bind(this.dataRangeXmax)
+		}
+		return this.dataRangeXmax
+	}
+
+	/** Replies the maximal x coordinate of the data range.
+	 */
+	def getDataRangeXmax : double {
+		dataRangeXmaxProperty.get
+	}
+
+	/** Change the maximal x coordinate of the data range.
+	 */
+	def setDataRangeXmax(x : double) {
+		dataRangeXmaxProperty.set(x)
+	}
+
+	/** Replies the size of the range to be displayed along the X axis.
+	 */
+	def dataXRangeSizeProperty : DoubleProperty {
+		if (this.dataXrangeSize === null) {
+			this.dataXrangeSize = new SimpleDoubleProperty(this, "dataXRangeSize")
+			this.dataXrangeSize.bind(dataXUnitSizeProperty.multiply(typeof(AbstractFxPreferenceManager).singleton.chartXRangeFactorProperty))
+		}
+		return this.dataXrangeSize
+	}
+
+	/** Replies the size of the range to be displayed along the X axis.
+	 */
+	def getDataXRangeSize : double {
+		dataXRangeSizeProperty.get
+	}
+	
+	/** Replies the size of one unit along the X axis. */
+	def dataXUnitSizeProperty : DoubleProperty {
+		if (this.dataXUnitSize === null) {
+			this.dataXUnitSize = new SimpleDoubleProperty(this, "dataXUnitSize", this.timeConfig.get.step) {
+				protected override invalidated {
+					val v = get
+					if (v < 0.0) {
+						set(Math::ulp(v))
+					}
+				}
+			}
+		}
+		return this.dataXUnitSize
+	}
+
+	/** Replies the size of one unit along the X axis.
+	 */
+	def getDataXUnitSize : double {
+		dataXUnitSizeProperty.get
+	}
+
+	/** Change the size of one unit along the X axis.
+	 */
+	def setDataXUnitSize(size : double) {
+		dataXUnitSizeProperty.set(size)
+	}
+
+}

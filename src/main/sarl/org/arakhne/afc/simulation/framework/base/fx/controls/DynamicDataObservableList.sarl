@@ -1,0 +1,147 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.fx.controls
+
+import javafx.beans.property.DoubleProperty
+import javafx.beans.property.SimpleDoubleProperty
+import javafx.collections.ModifiableObservableListBase
+import javafx.scene.chart.XYChart.Data
+
+/** An observable list of data that remove the old data. line chart that updates its data range dynamically.
+ * 
+ * @param <Y> the type of the data along the Y axis.
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class DynamicDataObservableList<Y> extends ModifiableObservableListBase<Data<Number, Y>> implements DataRangeable {
+
+	val backingList = <Data<Number, Y>>newArrayList
+
+	var xmin : DoubleProperty
+
+	var xmax : DoubleProperty
+
+	var range : DoubleProperty
+	
+	/** Replies the minimal x coordinate.
+	 */
+	def xminProperty : DoubleProperty {
+		if (this.xmin === null) {
+			this.xmin = new SimpleDoubleProperty(this, "xmin", Double::NEGATIVE_INFINITY)
+		}
+		return this.xmin
+	}
+
+	/** Replies the minimal x coordinate.
+	 */
+	def getXmin : double {
+		xminProperty.get
+	}
+
+	/** Replies the maximal x coordinate.
+	 */
+	def xmaxProperty : DoubleProperty {
+		if (this.xmax === null) {
+			this.xmax = new SimpleDoubleProperty(this, "xmax", Double::NEGATIVE_INFINITY)
+		}
+		return this.xmax
+	}
+
+	/** Replies the maximal x coordinate.
+	 */
+	def getXmax : double {
+		xmaxProperty.get
+	}
+
+	/** Replies the size of the range of data to store.
+	 */
+	def rangeSizeProperty : DoubleProperty {
+		if (this.range === null) {
+			this.range = new SimpleDoubleProperty(this, "rangeSize", Double::POSITIVE_INFINITY) {
+				protected override invalidated {
+					var v = getValue
+					if (v < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.range
+	}
+
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	private def removeOldData(value : double) : int {
+		val each = this.backingList.iterator
+		var nb = 0
+		while (each.hasNext) {
+			var element = each.next
+			if ((element.XValue as double) < value) {
+				each.remove
+				nb++
+			}
+		}
+		return nb
+	}
+	
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	protected def doAdd(index : int, element : Data<Number, Y>) {
+		// Assert the new data is ascendent along X axis
+		assert index === 0 || (this.backingList.get(index - 1).XValue as double) <= (element.XValue as double)
+
+		// Assert the new data is ascendent along X axis
+		assert index >= this.backingList.length || (this.backingList.get(index + 1).XValue as double) >= (element.XValue as double)
+
+		// Update the min/max values
+		var m = element.XValue as double
+		var removed = 0
+		var mx = xmaxProperty.get
+		if (m > mx) {
+			var mi = xminProperty.get
+			var nmi = m - rangeSizeProperty.get
+			xmaxProperty.set(m)
+			if (nmi > mi) {
+				removed = removeOldData(nmi)
+				xminProperty.set(nmi)
+			}
+		}
+
+		// Add the element
+		this.backingList.add(index - removed, element)
+	}
+	
+	protected def doRemove(index : int) : Data<Number, Y> {
+		return this.backingList.remove(index)
+	}
+	
+	protected def doSet(index : int, element : Data<Number, Y>) : Data<Number, Y> {
+		return this.backingList.set(index, element)
+	}
+	
+	def get(index : int) : Data<Number, Y> {
+		this.backingList.get(index)
+	}
+	
+	def size : int {
+		this.backingList.size
+	}
+	
+}

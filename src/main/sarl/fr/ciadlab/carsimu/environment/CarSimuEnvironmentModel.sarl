@@ -1,0 +1,86 @@
+/*
+ * $Id$
+ *
+ * SARL is an general-purpose agent programming language.
+ * More details on http://www.sarl.io
+ *
+ * Copyright (C) 2014-2021 the original authors or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package fr.ciadlab.carsimu.environment
+
+import org.arakhne.afc.gis.road.primitive.RoadConnection
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.math.graph.DynamicDepthUpdater
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+import org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d
+
+/**
+ * Model of the environment for the traffic simulation.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class CarSimuEnvironmentModel extends EnvironmentModel1d {
+
+	static val MAX_IDDLE_TIME = 600.0
+
+	var firstIddleTime : Double
+
+	protected override createDynamicPerceptionDepthUpdater : DynamicDepthUpdater<RoadSegment, RoadConnection> {
+		new CarPerceptionUpdater
+	}
+
+	protected override createPerceptionBuilder : PerceptionBuilder {
+		new PerceptionBuilder
+	}
+
+	protected override onPossibleEndOfSimulation(nbChanges : int, timeManager : TimeManager) : boolean {
+		if (this.firstIddleTime === null) {
+			if (nbChanges <= 0) {
+				this.firstIddleTime = timeManager.current + MAX_IDDLE_TIME
+			}
+		} else {
+			if (nbChanges > 0) {
+				this.firstIddleTime = null
+			}
+		}
+		if (this.firstIddleTime !== null && timeManager.current >= this.firstIddleTime) {
+			return true
+		}
+		return false
+	}
+
+	/** 
+	 * Dynamic depth updater.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	private static class CarPerceptionUpdater implements DynamicDepthUpdater<RoadSegment, RoadConnection> {
+	
+		override updateDepth(previousSegment : RoadSegment, segment : RoadSegment, point : RoadConnection,
+			distanceToReach : double, distanceToConsume : double) : double {
+			// TODO: Update the perception distance according to specific env. objects
+			return distanceToConsume
+		}
+	
+	}
+
+}

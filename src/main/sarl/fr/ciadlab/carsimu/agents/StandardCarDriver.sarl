@@ -1,0 +1,73 @@
+/*
+ * $Id$
+ *
+ * SARL is an general-purpose agent programming language.
+ * More details on http://www.sarl.io
+ *
+ * Copyright (C) 2014-2021 the original authors or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package fr.ciadlab.carsimu.agents
+
+import io.sarl.core.Behaviors
+import io.sarl.core.Initialize
+import io.sarl.core.Logging
+import io.sarl.lang.core.Behavior
+import java.util.Collection
+import org.arakhne.afc.math.geometry.d2.d.Point2d
+import org.arakhne.afc.simulation.framework.base.preferences.PreferenceManager
+import org.arakhne.afc.simulation.framework.framework1d.agents.AbstractSimulatedAgent1d
+import org.arakhne.afc.simulation.framework.framework1d.agents.destination.StandardDestinationTester
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+import fr.ciadlab.carsimu.behaviors.Driver
+
+/**
+ * The agent that supports the driver behavior with the control of a standard car.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+agent StandardCarDriver extends AbstractSimulatedAgent1d {
+
+	uses Behaviors, Logging
+
+	var driverBehavior : Behavior
+
+	@SuppressWarnings("potential_field_synchronization_problem")
+	override overridableInitializationStage(it : Initialize, differedCode : Collection<Runnable>) : void {
+		super.overridableInitializationStage(it, differedCode)
+		loggingName = "DRIVER-" + ID.toString
+
+		setSkill(new StandardDestinationTester(
+			it.parameters.get(4) as Double,
+			new Point2d(it.parameters.get(2) as Double, it.parameters.get(3) as Double)))
+
+		val carFollowingModel = typeof(PreferenceManager1d).singleton.carFollowingModel
+		val carFollowingSkill = carFollowingModel.skillType.newInstance
+		setSkill(carFollowingSkill)
+
+		val humanEstimationModel = typeof(PreferenceManager).singleton.humanEstimationModel
+		val humanEstimationSkill = humanEstimationModel.skillType.newInstance
+		setSkill(humanEstimationSkill)
+
+		this.driverBehavior = new Driver(this)
+		this.driverBehavior.registerBehavior(it.parameters)
+	}
+
+}

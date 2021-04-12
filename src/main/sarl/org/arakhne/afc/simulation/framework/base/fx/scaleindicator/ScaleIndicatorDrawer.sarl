@@ -1,0 +1,44 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.fx.scaleindicator
+
+import org.arakhne.afc.nodefx.ZoomableGraphicsContext
+
+/** A drawer of the map scale indicators.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+interface ScaleIndicatorDrawer {
+
+	/** Draw the scale indicator.
+	 * 
+	 * @param gc the graphics context in which the scale indicator must be drawn.
+	 * @param position the position of the indicator on the screen.
+	 * @param isHozirontal indicates if the indicator should be drawn horizontally, or not.
+	 * @param fgColor the color of the lines and the text.
+	 * @param bgColor1 a first background color (usage depends on the implementation)
+	 * @param bgColor2 a second background color (usage depends on the implementation)
+	 */
+	def drawMapScaleIndicator(gc : ZoomableGraphicsContext, position : MapScalePosition, isHorizontal : boolean)
+
+}

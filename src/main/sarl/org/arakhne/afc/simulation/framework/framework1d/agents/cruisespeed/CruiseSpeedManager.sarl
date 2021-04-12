@@ -1,0 +1,100 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.agents.cruisespeed
+
+import io.sarl.lang.core.DefaultSkill
+import java.util.List
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.math.geometry.d1.Direction1D
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+import org.arakhne.afc.simulation.framework.framework1d.environment.PerceptionUnit1d
+
+/**
+ * Capacity for managing the cruise speed.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+@DefaultSkill(typeof(RoadCruiseSpeedManager))
+capacity CruiseSpeedManager {
+
+	/** 
+	 * Replies the cruise speed that is expected by the agent.
+	 * 
+	 * @return the cruise speed in m/s.
+	 */
+	def getCruiseSpeed : double
+
+	/** 
+	 * Change the cruise speed that is computed by the agent.
+	 * 
+	 * @param speed is the new cruise speed in m/s.
+	 */
+	def setCruiseSpeed(speed : double)
+
+	/** 
+	 * Change the cruise speed that is preferred by the agent.
+	 * 
+	 * @param speed is the new preferred cruise speed in m/s.
+	 */
+	def setPreferredCruiseSpeed(speed : double)
+
+	/** 
+	 * Change the cruise speed that is preferred by the agent if and only if there is
+	 * no preferred speed already provided.
+	 * 
+	 * @param speed is the new preferred cruise speed in m/s.
+	 */
+	def setPreferredCruiseSpeedIfNotSet(speed : double)
+	
+	/** 
+	 * Unset the preferred cruise speed.
+	 */
+	def unsetPreferredCruiseSpeed
+
+	/** 
+	 * Replies the preferred cruise speed that is computed by the agent.
+	 * 
+	 * @return the preferred cruise speed in m/s.
+	 */
+    def getPreferredCruiseSpeed : double
+
+	/** Update the cruise speed if necessary.
+	 * This function may use the {@link #setCruiseSpeed(double) forced cruise speed},
+	 * or the {@link #setPreferredCruiseSpeed(double) preferred cruise speed} when
+	 * it is fulfilling the legal constraints.
+	 *
+	 * @param t the current time.
+	 * @param perceivedObjects is the list of the perceived objects.
+	 * @param path the path following by the vehicle.
+	 * @param currentPosition the position of the vehicle.
+	 * @param currentDirection the direction of the vehicle on the road.
+	 * @param currentSpeed the current speed to consider.
+	 * @param maxSpeed the maximum speed to consider.
+	 */
+	def updateCruiseSpeed(t : double, perceivedObjects : List<PerceptionUnit1d<RoadObject>>,
+		path : RoadPath, currentPosition : Point1d,
+		currentDirection : Direction1D,
+		currentSpeed : double, maxSpeed : double)
+
+}

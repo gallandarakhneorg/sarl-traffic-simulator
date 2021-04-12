@@ -1,0 +1,108 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.agents.cruisespeed
+
+import com.google.common.util.concurrent.AtomicDouble
+import java.util.List
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.math.geometry.d1.Direction1D
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.PerceptionUnit1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+
+import static extension org.arakhne.afc.simulation.framework.framework1d.util.RoadTools.*
+
+/** 
+ * Skill for managing the cruise speed.
+ * The cruise speed is the legal speed that is associated to the type of road.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+skill RoadCruiseSpeedManager implements CruiseSpeedManager {
+
+	val preferredCruiseSpeed = new AtomicDouble(Double::NaN)
+
+	val cruiseSpeed = new AtomicDouble
+
+    override getCruiseSpeed : double {
+    	this.cruiseSpeed.get
+    }
+
+	override setCruiseSpeed(speed : double) {
+		this.cruiseSpeed.set(speed)
+	}
+
+	override getPreferredCruiseSpeed : double {
+		this.preferredCruiseSpeed.get
+	}
+
+	override setPreferredCruiseSpeed(speed : double) {
+		this.preferredCruiseSpeed.set(speed)
+	}
+
+	override setPreferredCruiseSpeedIfNotSet(speed : double) {
+		val v = this.preferredCruiseSpeed.get
+		if (v.isNaN) {
+			this.preferredCruiseSpeed.set(speed)
+		}
+	}
+
+	override unsetPreferredCruiseSpeed {
+		this.preferredCruiseSpeed.set(Double::NaN)
+	}
+
+	override updateCruiseSpeed(
+				t : double, perceivedObjects : List<PerceptionUnit1d<RoadObject>>,
+				path : RoadPath, currentPosition : Point1d, currentDirection : Direction1D,
+				currentSpeed : double, maxSpeed : double) {
+		var desiredSpeed = computeRoadSpeedLimit(path, maxSpeed)
+		desiredSpeed = desiredSpeed.applyRoadShape(path, currentPosition, currentDirection, currentSpeed, maxSpeed)
+		desiredSpeed = desiredSpeed.applyPreferredSpeed
+		this.cruiseSpeed.set(desiredSpeed)
+	}
+
+	protected def computeRoadSpeedLimit(path : RoadPath, maxSpeed : double) : double {
+		var rs = path.firstSegment
+		return rs.getSpeedLimitFor(maxSpeed)
+	}
+
+	protected def applyRoadShape(preconizedSpeedLimit : double, path : RoadPath, currentPosition : Point1d, currentDirection : Direction1D,
+		currentSpeed : double, maxSpeed : double) : double {
+		// Get speed limit from the next turn
+		var curveSpeedLimit = getMaxSpeedForNextTurn(path, currentPosition, currentSpeed, currentDirection, maxSpeed)
+
+		// Apply the impact of the road curve
+		var desiredSpeed = Math::min(preconizedSpeedLimit, curveSpeedLimit)
+
+		return desiredSpeed
+	}
+
+	protected def applyPreferredSpeed(preconizedSpeedLimit : double) : double {
+		val pref = getPreferredCruiseSpeed
+		if (!pref.isNaN && pref >= 0.0) {
+			return Math::min(pref, preconizedSpeedLimit)
+		}
+		return preconizedSpeedLimit
+	}
+
+}

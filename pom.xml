@@ -1,0 +1,173 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>fr.ciad-lab.sarl</groupId>
+	<artifactId>car-simulator</artifactId>
+	<version>0.1-SNAPSHOT</version>
+	<name>Car Simulator</name>
+
+	<properties>
+		<sarl.version>0.12.0-SNAPSHOT</sarl.version>
+		<janus.version>3.${sarl.version}</janus.version>
+		<afc.version>16.0</afc.version>
+		<compiler.level>1.8</compiler.level>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<cliRunnerMainClass>fr.ciadlab.carsimu.Main</cliRunnerMainClass>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- Force the resolution of the version number of Xtext (because the dependencies provide multiple versions) -->
+			<dependency>
+				<groupId>org.eclipse.xtext</groupId>
+				<artifactId>org.eclipse.xtext.xbase.lib</artifactId>
+				<version>2.22.0</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<dependencies>
+		<dependency>
+			<groupId>io.sarl.maven</groupId>
+			<artifactId>io.sarl.javafx</artifactId>
+			<version>${sarl.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.janusproject</groupId>
+			<artifactId>io.janusproject.kernel</artifactId>
+			<version>${janus.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.arakhne.afc.gis.ui</groupId>
+			<artifactId>gisroadfx</artifactId>
+			<version>${afc.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.arakhne.afc.core</groupId>
+			<artifactId>mathphysics</artifactId>
+			<version>${afc.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.arakhne.afc.core</groupId>
+			<artifactId>vmutils</artifactId>
+			<version>${afc.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.arakhne.afc.core</groupId>
+			<artifactId>mathstochastic</artifactId>
+			<version>${afc.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.opencsv</groupId>
+			<artifactId>opencsv</artifactId>
+			<version>5.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.dlsc.preferencesfx</groupId>
+			<artifactId>preferencesfx-core</artifactId>
+			<version>8.6.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.fxmisc.richtext</groupId>
+			<artifactId>richtextfx</artifactId>
+			<version>0.10.5</version>
+		</dependency>
+	</dependencies>
+	
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.8.1</version>
+				<configuration>
+					<source>${compiler.level}</source>
+					<target>${compiler.level}</target>
+					<encoding>${project.build.sourceEncoding}</encoding>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>io.sarl.maven</groupId>
+				<artifactId>sarl-maven-plugin</artifactId>
+				<version>${sarl.version}</version>
+				<extensions>true</extensions>
+				<configuration>
+					<source>${compiler.level}</source>
+					<target>${compiler.level}</target>
+					<encoding>${project.build.sourceEncoding}</encoding>
+				</configuration>
+			</plugin>
+			<plugin>
+				<!-- to create a jar with all dependencies -->
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<version>3.3.0</version>
+				<executions>
+					<execution>
+						<id>cli-application</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+						<configuration>
+							<descriptors>
+								<descriptor>cli.xml</descriptor>
+							</descriptors>
+							<archive>
+								<manifest>
+									<mainClass>${cliRunnerMainClass}</mainClass>
+								</manifest>
+								<manifestEntries>
+									<Automatic-Module-Name>${project.artifactId}</Automatic-Module-Name>
+								</manifestEntries>
+							</archive>
+							<attach>false</attach>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+	<licenses>
+		<license>
+			<name>Apache License, Version 2.0</name>
+			<url>http://www.apache.org/licenses/LICENSE-2.0</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
+
+	<developers>
+		<developer>
+			<id>sgalland</id>
+			<name>St&amp;eacute;phane Galland</name>
+			<email>stephane.galland@utbm.fr</email>
+			<url>http://www.multiagent.fr/People:Galland_stephane</url>
+			<organization>
+				Universit&amp;eacute; de Bourgogne Franche-Comt&amp;eacute;.
+				Universit&amp;eacute; de Technologie de Belfort-Montb&amp;eacute;liard.
+			</organization>
+			<organizationUrl>http://www.multiagent.fr</organizationUrl>
+			<roles>
+				<role>Co-founder</role>
+				<role>Architect</role>
+				<role>Developer</role>
+			</roles>
+		</developer>
+		<developer>
+			<id>gcich</id>
+			<name>Glenn Cich</name>
+			<email>glenn.cich@uhasselt.be</email>
+			<organization>
+				Institute for Mobility.
+				Hasselt University.
+			</organization>
+			<organizationUrl>http://imob.uhasselt.be</organizationUrl>
+			<roles>
+				<role>Developer</role>
+			</roles>
+		</developer>
+	</developers>
+
+</project>

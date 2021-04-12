@@ -1,0 +1,104 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.probes.^def
+
+import com.opencsv.CSVWriter
+import java.io.File
+import java.util.List
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.simulation.framework.base.environment.AgentBody
+import org.arakhne.afc.simulation.framework.base.fx.probes.AbstractCsvFxEnvironmentProbe
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+import org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d
+
+import static extension org.arakhne.afc.simulation.framework.framework1d.probes.^def.ProbeUtils.*
+import org.arakhne.afc.simulation.framework.framework1d.environment.MobileAgentBody
+import org.arakhne.afc.math.physics.MeasureUnitUtil
+import java.util.concurrent.TimeUnit
+
+/**
+ * A probe for measuring the average
+ * travel duration of the vehicles.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class GlobalTravelDurationProbe extends AbstractCsvFxEnvironmentProbe<EnvironmentModel1d> {
+
+	/** Replies if the given road should be considered for the probed value computation.
+	 */
+	protected def getRoadFilter : (RoadSegment)=>boolean {
+		null
+	}
+
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	private def treatAgent(body : MobileAgentBody, road : RoadSegment, t : double, output : CSVWriter) {
+		val start = body.spawningTime
+		assert !Double::isNaN(start)
+		val end = body.destroyingTime
+		if (!Double::isNaN(end)) {
+			val travelDurationSeconds = Math::max(0.0, end - start)
+			if (travelDurationSeconds > 0.0) {
+				val travelDurationMinutes = MeasureUnitUtil::fromSeconds(travelDurationSeconds, TimeUnit::MINUTES)
+				val travelDurationHours = MeasureUnitUtil::fromSeconds(travelDurationSeconds, TimeUnit::HOURS)
+				output.writeNext(#[
+					t as String,
+					body.UUID.toUUIDString,
+					road.geoId.toGeoIdString,
+					travelDurationSeconds as String,
+					travelDurationMinutes as String,
+					travelDurationHours as String
+				])
+				output.flushQuietly
+			}
+		}
+	}
+
+	override probe(environment : EnvironmentModel1d, removedBodies : List<? extends AgentBody>, time : TimeManager,
+		rootFolder : File, output : CSVWriter) {
+		val t = time.current
+
+		environment.forEachAgent(roadFilter) [ body, road |
+			body.treatAgent(road, t, output)
+		]
+
+		if (removedBodies !== null) {
+			for (removedBody : removedBodies) {
+				if (removedBody instanceof MobileAgentBody) {
+					removedBody.treatAgent(removedBody.roadSegment, t, output)
+				}
+			}
+		}
+	}
+	
+	def getCsvHeader : String[] {
+		#[
+			"t",
+			"Vehicle Id",
+			"Road Id",
+			"Travel duration (s)",
+			"Travel duration (m)",
+			"Travel duration (h)"
+		]
+	}
+
+}

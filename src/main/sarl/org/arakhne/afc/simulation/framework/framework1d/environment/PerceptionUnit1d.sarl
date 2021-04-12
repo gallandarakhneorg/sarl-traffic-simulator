@@ -1,0 +1,93 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.environment
+
+import java.util.List
+import org.arakhne.afc.math.geometry.IntersectionType
+import org.arakhne.afc.math.geometry.d1.Segment1D
+import org.arakhne.afc.vmutil.json.JsonBuffer
+import org.eclipse.xtend.lib.annotations.Accessors
+import org.arakhne.afc.simulation.framework.base.environment.PerceptionUnit
+
+/**
+ * This class represents a unit of perception within a 1D environment.
+ *
+ * @param <D> the type of the entities.
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class PerceptionUnit1d<D extends RoadObject> extends PerceptionUnit<D> {
+
+	@Accessors(PUBLIC_GETTER)
+	val sameDirection : boolean
+
+	@Accessors(PUBLIC_GETTER)
+	val inFront : boolean
+
+	@Accessors(PUBLIC_GETTER)
+	val perceivedObjectLateralDistance : double
+
+	@Accessors(PUBLIC_GETTER)
+	val perceivedObjectCurvilineDistance : double
+
+	@Accessors(PUBLIC_GETTER) 
+	val pathToPerceivedObject : List<? extends Segment1D<?, ?>>
+
+	@Accessors(PUBLIC_GETTER)
+	val objectType : ObjectType
+
+	/** Constructor.
+	 *
+	 * @param type the type of intersection.
+	 * @param object the perceived object that is concerned by this perception unit.
+	 * @param relativeCurvilineDistance the distance to the object.
+	 * @param relativeLateralDistance the lateral distance to the object.
+	 * @param isInFrontOf indicates if the object is at the front of the perceiving agent.
+	 * @param hasSameDirection indicates if the object has the same direction as the perceiving agent.
+	 * @param objectType indicates the general type of object.
+	 * @param path the path to reach the object.
+	 */
+	new (type : IntersectionType, object : D,
+			relativeCurvilineDistance : double, relativeLateralDistance : double,
+			isInFrontOf : boolean, hasSameDirection : boolean, objectType : ObjectType,
+			path : List<? extends Segment1D<?, ?>>) {
+		super(type, object)
+		this.perceivedObjectCurvilineDistance = relativeCurvilineDistance
+		this.inFront = isInFrontOf
+		this.perceivedObjectLateralDistance = relativeLateralDistance
+		this.sameDirection = hasSameDirection
+		this.objectType = objectType
+		this.pathToPerceivedObject = path
+	}
+
+	def toJson(buffer : JsonBuffer) {
+		super.toJson(buffer)
+		buffer.add("curvilineDistance", getPerceivedObjectCurvilineDistance)
+		buffer.add("lateralDistance", getPerceivedObjectLateralDistance)
+		buffer.add("inFront", isInFront)
+		buffer.add("sameDirection", isSameDirection)
+		buffer.add("pathToPerceivedObject", getPathToPerceivedObject)
+		buffer.add("objectType", getObjectType)
+	}
+
+}
+

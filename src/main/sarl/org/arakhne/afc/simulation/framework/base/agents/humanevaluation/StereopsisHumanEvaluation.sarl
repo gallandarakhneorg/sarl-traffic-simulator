@@ -1,0 +1,100 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.agents.humanevaluation
+
+import java.util.Random
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+import org.arakhne.afc.util.PhysicsUtil2
+
+import static java.lang.Math.max
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+
+/**
+ * Skill for approximating several values based on {@link https://en.wikipedia.org/wiki/Stereopsis stereopsis}.
+ * 
+ * <h3>Distance Estimation</h3>
+ *
+ * <p>{@link https://www.schepens.harvard.edu/images/stories/nire/distance-perception.pdf Paper 1}
+ * 
+ * <p><pre><code>
+ * @article{10.1167/9.1.10,
+ *   author = {Allison, Robert S. and Gillam, Barbara J. and Vecellio, Elia},
+ *   title = "{Binocular depth discrimination and estimation beyond interaction space}",
+ *   journal = {Journal of Vision},
+ *   volume = {9},
+ *   number = {1},
+ *   pages = {10-10},
+ *   year = {2009},
+ *   month = {01},
+ *   issn = {1534-7362},
+ *   doi = {10.1167/9.1.10},
+ *   url = {https://doi.org/10.1167/9.1.10},
+ *   eprint = {https://arvojournals.org/arvo/content\_public/journal/jov/932855/jov-9-1-10.pdf},
+ * }
+ * </code></pre>
+ *
+ * <h3>Speed Estimation</h3>
+ *
+ * <p>{@link https://neurosciencenews.com/optimal-model-speed-estimation-2574/ Paper 2}.
+ *
+ * <p>{@link https://www.nature.com/articles/ncomms8900 Paper 3}.
+ * 
+ * <p>{@link https://pubmed.ncbi.nlm.nih.gov/31161415/ Paper 4}.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+skill StereopsisHumanEvaluation implements HumanEvaluation {
+
+	val ALPHA = 9.01190476190476
+	val BETA = -11.1785714285714
+
+	val random = new Random
+
+	val distanceApproximation : double
+
+	val speedApproximation : double
+
+	new {
+		var prefs = typeof(PreferenceManager1d).singleton
+		this.speedApproximation = prefs.agentSpeedApproximation
+		this.distanceApproximation = prefs.agentDistanceApproximation
+	}
+
+	override estimateSpeed(speed : double) : double {
+		val rnd = this.random.nextGaussian
+		return ( rnd * this.speedApproximation ) + speed
+	}
+
+	override estimateDistance(distance : double) : double {
+		val rnd = this.random.nextGaussian
+		val fx = ALPHA * distance + BETA + ( rnd * this.distanceApproximation )
+		return max(0.0, fx)
+	}
+
+	override estimateSafeBrakingDistance(currentSpeed : double, maxDeceleration : double,
+		minDistance : double) : double {
+		PhysicsUtil2::getStoppingDistance(currentSpeed, maxDeceleration, minDistance).estimateDistance
+	}
+
+}

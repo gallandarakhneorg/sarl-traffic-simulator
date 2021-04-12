@@ -1,0 +1,65 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.agents.obstacle
+
+import io.sarl.lang.core.DefaultSkill
+import io.sarl.lang.util.OutParameter
+import java.util.List
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.math.geometry.d1.d.Rectangle1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.ObjectType
+import org.arakhne.afc.simulation.framework.framework1d.environment.PerceptionUnit1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+
+/**
+ * Capacity for an agent to detect an obstacle on a road system.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+@DefaultSkill(typeof(StandardObstacleDetector))
+capacity ObstacleDetector {
+
+	/** Detect any obstacle.
+	 *
+	 * @param path the path to follow up.
+	 * @param currentPosition the current position of the agent.
+	 * @param currentSpeed the current speed of the agent.
+	 * @param vehicleBounds the bounds of the current agent.
+	 * @param destinationPosition : the position of the destination.
+	 * @param perceptions the perceived objects by the agent.
+	 * @param outObstacle is filled with the obstacle's instance.
+	 * @param outObstacleSpeed is filled with the speed of the obstacle.
+	 * @param outDistance is filled with the minimum of the distance to the obstacle or to the destination. 
+	 * @return the type of obstacle, or {@code null} if no obstacle was found.
+	 */
+	def detectObstacle(
+		path : RoadPath,
+		currentPosition : Point1d, 
+		currentSpeed : double,
+		vehicleBounds : Rectangle1d, destinationPosition : Point1d,
+		perceptions : List<PerceptionUnit1d<RoadObject>>,
+		outObstacle : OutParameter<PerceptionUnit1d<RoadObject>>,
+		outObstacleSpeed : OutParameter<Double>, outDistance : OutParameter<Double>) : ObjectType
+
+}

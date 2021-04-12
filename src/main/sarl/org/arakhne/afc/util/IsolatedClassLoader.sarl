@@ -1,0 +1,130 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.util
+
+import java.net.URL
+import java.util.Enumeration
+
+/** 
+ * Isolated class loader.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class IsolatedClassLoader extends ClassLoader {
+
+	val sysClzLoader : ClassLoader 
+
+	new {
+		this(systemClassLoader)
+	}
+
+	new(parent : ClassLoader) {
+		super(parent)
+		this.sysClzLoader = getSystemClassLoader
+	}
+
+	protected override loadClass(name : String, resolve : boolean) : Class<?> {
+        // has the class loaded already?
+		var loadedClass = name.findLoadedClass
+        if (loadedClass === null) {
+            try {
+                if (this.sysClzLoader !== null) {
+                    loadedClass = this.sysClzLoader.loadClass(name)
+                }
+            } catch (ex : ClassNotFoundException) {
+                // class not found in system class loader... silently skipping
+            }
+            try {
+                // find the class from given jar urls as in first constructor parameter.
+                if (loadedClass === null) {
+                    loadedClass = name.findClass
+                }
+            } catch (e : ClassNotFoundException) {
+                // class is not found in the given urls.
+                // Let's try it in parent classloader.
+                // If class is still not found, then this method will throw class not found ex.
+                loadedClass = super.loadClass(name, false)
+            }
+        }
+
+        if (resolve) {      // marked to resolve
+            resolveClass(loadedClass)
+        }
+        return loadedClass
+    }
+
+	override getResources(name : String) : Enumeration<URL> {
+        val allRes = newLinkedList
+
+        // load resources from sys class loader
+        val sysResources = this.sysClzLoader.getResources(name)
+        if (sysResources !== null) {
+            while (sysResources.hasMoreElements) {
+                allRes += sysResources.nextElement
+            }
+        }
+
+        // load resource from this class loader
+        val thisRes = name.findResources
+        if (thisRes !== null) {
+            while (thisRes.hasMoreElements) {
+                allRes += thisRes.nextElement
+			}
+        }
+
+        // then try finding resources from parent class loaders
+        val parentRes = super.findResources(name)
+        if (parentRes !== null) {
+            while (parentRes.hasMoreElements) {
+                allRes += parentRes.nextElement
+            }
+        }
+
+        return new Enumeration<URL> {
+            val it0 = allRes.iterator
+
+			override hasMoreElements : boolean {
+                this.it0.hasNext
+            }
+
+			override nextElement : URL {
+                this.it0.next
+            }
+        }
+    }
+
+	override getResource(name : String) : URL {
+        var res : URL = null
+        if (sysClzLoader !== null) {
+            res = this.sysClzLoader.getResource(name)
+        }
+        if (res === null) {
+            res = name.findResource
+        }
+        if (res === null) {
+            res = super.getResource(name)
+        }
+        return res
+    }
+
+}

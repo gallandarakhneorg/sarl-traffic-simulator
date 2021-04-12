@@ -1,0 +1,388 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.environment
+
+import java.util.Collection
+import java.util.Comparator
+import java.util.Iterator
+import java.util.List
+import java.util.UUID
+import org.arakhne.afc.gis.maplayer.MapLayerContentEvent
+import org.arakhne.afc.gis.road.SubRoadNetwork
+import org.arakhne.afc.gis.road.layer.RoadNetworkLayer
+import org.arakhne.afc.gis.road.primitive.RoadConnection
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.math.geometry.IntersectionType
+import org.arakhne.afc.math.geometry.d1.Transform1D
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.math.geometry.d1.d.Rectangle1d
+import org.arakhne.afc.math.graph.DynamicDepthUpdater
+import org.arakhne.afc.math.graph.GraphIterationElement
+import org.arakhne.afc.math.graph.SubGraph
+import org.arakhne.afc.math.graph.SubGraphBuildListener
+import org.arakhne.afc.math.physics.PhysicsUtil
+import org.arakhne.afc.simulation.framework.base.environment.AbstractEnvironmentModel
+import org.arakhne.afc.simulation.framework.base.events.AgentBodyDestructionInfluence
+import org.arakhne.afc.simulation.framework.base.events.Influence
+import org.arakhne.afc.simulation.framework.base.events.PopulationInfluence
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+import org.arakhne.afc.simulation.framework.framework1d.events.MotionInfluence
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+import org.arakhne.afc.util.ListUtil
+import org.arakhne.afc.vmutil.ReflectionUtil
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+import static extension org.arakhne.afc.simulation.framework.framework1d.util.RoadTools.*
+
+/** 
+ * Model of the agent environment.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class EnvironmentModel1d extends AbstractEnvironmentModel<MobileAgentBody, InfluenceApplier1d> {
+
+	static val IMMOBILE_OBJECTS_ATTRIBUTE_NAME_ = "~IMMOBILE_ROAD_OBJECTS"
+
+	static val MOBILE_OBJECTS_ATTRIBUTE_NAME_ = "~MOBILE_ROAD_OBJECTS"
+
+	static def getImmobileObjects(segment : RoadSegment) : Collection<? extends RoadObject> {
+		segment.getUserDataCollection(IMMOBILE_OBJECTS_ATTRIBUTE_NAME_)
+	}
+
+	static def getImmobileObjects(segment : RoadSegment, type : Class<T>) : Collection<T> with T extends RoadObject {
+		segment.getUserDataCollection(IMMOBILE_OBJECTS_ATTRIBUTE_NAME_) as Collection<T>
+	}
+
+	static def addImmobileObject(segment : RoadSegment, object : RoadObject) : void {
+		segment.addUserData(IMMOBILE_OBJECTS_ATTRIBUTE_NAME_, object)
+	}
+
+	static def removeImmobileObject(segment : RoadSegment, object : RoadObject) : void {
+		segment.removeUserData(IMMOBILE_OBJECTS_ATTRIBUTE_NAME_, object)
+	}
+
+	static def getMobileObjects(segment : RoadSegment) : Collection<? extends RoadObject> {
+		segment.getUserDataCollection(MOBILE_OBJECTS_ATTRIBUTE_NAME_)
+	}
+
+	static def getMobileObjects(segment : RoadSegment, type : Class<T>) : Collection<T> with T extends RoadObject {
+		segment.getUserDataCollection(MOBILE_OBJECTS_ATTRIBUTE_NAME_) as Collection<T>
+	}
+	
+	static def addMobileObject(segment : RoadSegment, object : RoadObject) : void {
+		segment.addUserData(MOBILE_OBJECTS_ATTRIBUTE_NAME_, object)
+	}
+
+	static def removeMobileObject(segment : RoadSegment, object : RoadObject) : void {
+		segment.removeUserData(MOBILE_OBJECTS_ATTRIBUTE_NAME_, object)
+	}
+	
+	val roads : RoadNetworkLayer
+
+	var influenceApplier : InfluenceApplier1d
+
+	new (roads : RoadNetworkLayer) {
+		this.roads = roads
+	}
+
+	synchronized def hasObjectBelowDistance(position : Point1d, maxDistance : double) : boolean {
+		var segment = position.segment as RoadSegment
+		var entities : Collection<? extends RoadObject> = segment.mobileObjects
+		if (entities !== null && !entities.empty) {
+			val maxDist = maxDistance ** 2
+			for (body : entities) {
+				var sdist = body.bounds.getDistanceSquared(position)
+				if (sdist <= maxDist) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	synchronized override synchronizeViews {
+		this.roads.container.fireLayerContentChangedEvent(new MapLayerContentEvent(this.roads))
+	}
+
+	synchronized def createAgentBody(timeManager : TimeManager,
+			type : Class<? extends MobileAgentBody>, position : Point1d,
+			forceLateralPosition : boolean, entryPoint : RoadConnection,
+			width : double, height : double) : MobileAgentBody {
+		var agentPosition = position.clone
+		var segment = agentPosition.segment as RoadSegment
+		if (forceLateralPosition) {
+			if (segment.beginPoint == entryPoint) {
+				agentPosition.lateralDistance = segment.getLaneCenter(0)
+			} else {
+				agentPosition.lateralDistance = segment.getLaneCenter(segment.getLaneCountForDirection(entryPoint) - 1)
+			}
+		}
+		var id = UUID::randomUUID
+		var body = ReflectionUtil::newInstance(type, id, agentPosition, width, height)
+		body.roadEntry = entryPoint
+		body.spawningTime = timeManager.current
+		segment.addMobileObject(body)
+		this.agentBodies.put(id, body)
+		return body
+	}
+
+	def computePerceptions {
+		val perceptionBuilder = createPerceptionBuilder
+		for (body : getAgentBodies) {
+			perceptionBuilder.computeAndSetAgentPerception(body)
+		}
+	}
+
+	protected def computeAndSetAgentPerception(perceptionBuilder : PerceptionBuilder, body : MobileAgentBody) {
+		var position = body.roadPosition
+		var network = this.roads.roadNetwork
+		assert network !== null
+		var segment = position.segment as RoadSegment
+		assert segment !== null
+		var entryPoint = body.getRoadEntry
+		assert entryPoint !== null
+		var reverseOrder = (segment.endPoint == entryPoint)
+		var cposition = if (reverseOrder)
+				segment.length - position.curvilineCoordinate
+			else
+				position.curvilineCoordinate
+		var distance = body.getForwardPerceptionDistance
+		var iterator = network.depthIterator(
+			segment, distance, cposition, entryPoint, false, false, createDynamicPerceptionDepthUpdater)
+		var subNetwork = new SubRoadNetwork
+		perceptionBuilder.reset(body.UUID, body.forwardPerceptionDistance, body.bounds)
+		subNetwork.build(iterator, perceptionBuilder)
+		body.perceivedRoads = subNetwork
+		body.perceivedObjects = perceptionBuilder.getPerceptions
+	}
+
+	/** Create the instance of the perception builder.
+	 *
+	 * @return the instance of the perception builder.
+	 */
+	protected def createPerceptionBuilder : PerceptionBuilder {
+		new PerceptionBuilder
+	}
+
+	/** Create the instance of the perception builder.
+	 * 
+	 * @return the instance of the perception builder.
+	 */
+	protected def createDynamicPerceptionDepthUpdater : DynamicDepthUpdater<RoadSegment, RoadConnection> {
+		null
+	}
+
+	protected synchronized override getInfluenceApplier : InfluenceApplier1d {
+		if (this.influenceApplier === null) {
+			if (typeof(PreferenceManager1d).singleton.isObjectAvoidPhysicalCollision) {
+				this.influenceApplier = new CollisionDetectorInfluenceApplier1d(this.agentBodies)
+			} else {
+				this.influenceApplier = new DirectInfluenceApplier1d(this.agentBodies)
+			}
+		}
+		return this.influenceApplier
+	}
+	
+	synchronized def applyInfluence(body : MobileAgentBody, influence : Influence, applier : InfluenceApplier1d,
+				timeManager : TimeManager, removedBodies : Collection<MobileAgentBody>) {
+		switch (influence) {
+			MotionInfluence: {
+				var move = influence.computeSteeringTransformation(body, timeManager)
+				if (move !== null) {
+					applier.applyMotionInfluence(move, body, timeManager)
+				}
+			}
+			PopulationInfluence: {
+				if (influence instanceof AgentBodyDestructionInfluence) {
+					body.destroyingTime = timeManager.current
+					applier.prepareRemoval(body)
+					removedBodies.add(body)
+						// Do not return true because the change will be supported by the removal function.
+				}
+			}
+		}
+	}
+
+	private static def computeSteeringTransformation(
+			influence : MotionInfluence, 
+			entity : MobileRoadObject, 
+			timeManager : TimeManager) : Transform1D<RoadSegment> {
+		var requestedTransformation = influence.transform
+		var currentSpeed = entity.linearVelocity1D
+		var maxSpeed = entity.maxLinearSpeed
+		var acceleration = requestedTransformation.curvilineTransformation
+		var maxDeceleration = -entity.maxLinearDeceleration
+		var maxAcceleration = entity.maxLinearAcceleration
+		var dt = timeManager.dt
+		var linearMove = PhysicsUtil::motionNewtonLaw1D(
+				currentSpeed, 
+				0.0, // min speed
+				maxSpeed,
+				acceleration,
+				maxDeceleration,
+				maxAcceleration, 
+				dt)
+		var lateralMove = 0.0
+		
+		if (!typeof(PreferenceManager1d).singleton.isObjectEnableBackOff
+			&& linearMove < 0.0) {
+			linearMove = 0.0
+		}
+
+		if (linearMove === 0.0 && lateralMove === 0.0) {
+			return null
+		}
+		
+		return new Transform1D<RoadSegment>(
+				requestedTransformation.path,
+				requestedTransformation.firstSegmentPathDirection,
+				linearMove, lateralMove)
+	}
+
+	/** 
+	 * Perception builder and selector.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class PerceptionBuilder implements SubGraphBuildListener<RoadSegment, RoadConnection> {
+
+		static val PERCEPTION_COMPARATOR : Comparator<PerceptionUnit1d<?>> = [a, b |
+			a.perceivedObjectCurvilineDistance <=> b.perceivedObjectCurvilineDistance
+		]
+
+		protected var bodyId : UUID
+
+		protected var perceptionDistance : double
+
+		protected var position : Point1d
+
+		var perceptions : List<PerceptionUnit1d<RoadObject>>
+
+		def reset(bodyId : UUID, perceptionDistance : double, bounds : Rectangle1d) {
+			this.bodyId = bodyId
+			this.perceptionDistance = perceptionDistance
+			this.position = bounds.center
+			this.perceptions = newArrayList
+		}
+
+		def getPerceptions : List<PerceptionUnit1d<RoadObject>> {
+			this.perceptions
+		}
+
+		protected def add(atom : PerceptionUnit1d<RoadObject>) {
+			ListUtil::add(this.perceptions, PERCEPTION_COMPARATOR, atom, true, false)
+		}
+
+		override segmentAdded(graph : SubGraph<RoadSegment, RoadConnection, ?>,
+			elementDescription : GraphIterationElement<RoadSegment, RoadConnection>) {
+			val segment = elementDescription.segment
+			val point = elementDescription.point
+
+			val beg = segment.beginPoint == point
+
+			var entities : Collection<? extends RoadObject> = segment.immobileObjects
+			if (entities !== null && !entities.empty) {
+				entities.iterator.doPrecisePerception(elementDescription.distanceToReachSegment, segment, point, beg)
+			}
+
+			entities = segment.mobileObjects
+			if (entities !== null && !entities.empty) {
+				entities.iterator.doPrecisePerception(elementDescription.distanceToReachSegment, segment, point, beg)
+			}
+		}
+
+		protected def classifies1D(otherLower : double, otherUpper : double) : IntersectionType {
+			assert otherLower <= otherUpper
+			if (otherUpper <= 0.0 || otherLower >= this.perceptionDistance) {
+				return IntersectionType::OUTSIDE
+			}
+			if (otherLower < 0.0 || otherUpper > this.perceptionDistance) {
+				return IntersectionType::SPANNING
+			}
+			return IntersectionType::INSIDE
+		}
+
+		protected def doPrecisePerception(entities : Iterator<? extends RoadObject>, distanceToReachSegment : double,
+			segment : RoadSegment, entryPoint : RoadConnection, onSegmentDirection : boolean) {
+			var currentSegment = segment
+			while (entities.hasNext) {
+				var entity = entities.next
+				if (entity.UUID != this.bodyId) {
+
+					val p1d5 = entity.roadPosition
+					currentSegment = entity.roadSegment
+					assert currentSegment == segment, "Illegal state: object is not on the perception segment"
+
+					var relativeDistance = distanceToReachSegment
+					// Agent pos always relative to start point, so if the iterator placed us on the end connection we must add the remaining length
+					if (onSegmentDirection) {
+						relativeDistance += p1d5.curvilineCoordinate
+					} else {
+						relativeDistance += currentSegment.length - p1d5.curvilineCoordinate
+					}
+
+					val isInFront = relativeDistance >= 0.0
+
+					// Remove the back distance of the other body
+					// to the distance, assuming BoundingRect1D5
+					val entityWidth = entity.bounds.width
+					val entityDemiSize = entityWidth / 2.0
+					val farDistance = relativeDistance + entityDemiSize
+					relativeDistance -= entityDemiSize
+
+					// Compute the type of intersection
+					val curvilineClassification = classifies1D(relativeDistance, farDistance)
+
+					// -> object inside longitudinal frustum
+					if (curvilineClassification !== IntersectionType::OUTSIDE) {
+						var sameDirection : boolean
+						if (entity instanceof MobileRoadObject) {
+							sameDirection = entity.roadEntry == entryPoint
+						} else if (onSegmentDirection) {
+							sameDirection = p1d5.lateralDistance <= 0
+						} else {
+							sameDirection = p1d5.lateralDistance >= 0
+						}
+	
+						var result = new PerceptionUnit1d<RoadObject>(
+							curvilineClassification,
+							entity,
+							Math.max(relativeDistance, 0.0), // relative curviline distance
+							p1d5.lateralDistance - this.position.lateralDistance, // relative shift distance
+							isInFront,
+							sameDirection,
+							entity.objectType,
+							null)
+
+						result.add
+					}
+				}
+			}
+		}
+	
+	}
+
+}

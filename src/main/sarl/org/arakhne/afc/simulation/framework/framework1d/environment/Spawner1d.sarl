@@ -1,0 +1,248 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.environment
+
+import io.sarl.lang.core.Agent
+import java.util.Map
+import java.util.Random
+import java.util.UUID
+import org.arakhne.afc.gis.road.primitive.RoadConnection
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.math.DoubleRange
+import org.arakhne.afc.math.MathUtil
+import org.arakhne.afc.math.geometry.d1.Point1D
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.math.stochastic.StochasticLaw
+import org.arakhne.afc.simulation.framework.base.environment.Spawner
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+import static extension org.arakhne.afc.simulation.framework.framework1d.util.RoadTools.*
+
+/**
+ * Spawner of agents and their associated bodies.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class Spawner1d extends Spawner<EnvironmentModel1d, MobileAgentBody> {
+
+	static val RANDOM = new Random
+
+	val position = new Point1d
+
+	val entryPoint : RoadConnection
+
+	val width : double
+
+	val height : double
+
+	var attachToEndDistance = Double::NEGATIVE_INFINITY
+	
+	volatile var initialSpeedComputer : SpeedProvider
+	
+	new (position : Point1d, width : double, height : double, id : UUID,
+		law : StochasticLaw, budget : int, agentType : Class<? extends Agent>,
+		bodyType : Class<? extends MobileAgentBody>, bodyParameters : Map<String, Object>,
+		parameters : Object[]) {
+		super(id, law, budget, agentType, bodyType, bodyParameters, parameters)
+		this.width = width
+		this.height = height
+		this.position.set(position)
+		var segment = position.segment as RoadSegment
+		val ad = getAttachToEndDistance
+		if (position.curvilineCoordinate < ad) {
+			this.entryPoint = segment.beginPoint
+		} else if (position.curvilineCoordinate > segment.length - ad) {
+			this.entryPoint = segment.endPoint
+		} else {
+			this.entryPoint = null
+		}
+	}
+
+	protected def getAttachToEndDistance : double {
+		if (this.attachToEndDistance < 0.0) {
+			this.attachToEndDistance = typeof(PreferenceManager1d).singleton.spawnerAttachToEndDistance
+		}
+		return this.attachToEndDistance
+	}
+
+	def getPosition : Point1D<?, ?, ?> {
+		this.position.toUnmodifiable
+	}
+
+	override spawnableAt(timeManager : TimeManager) : int {
+		// On a road graph, it is possible to spawn only one vehicle at a given position
+		var quantity = super.spawnableAt(timeManager)
+		return Math::min(quantity, 1)
+	}
+
+	override createBody(timeManager : TimeManager, environmentModel : EnvironmentModel1d) : MobileAgentBody {
+		// Entry point on the segment
+		var ep = this.entryPoint
+		if (ep === null) {
+			var segment = this.position.segment as RoadSegment
+			if (RANDOM.nextBoolean) {
+				ep = segment.beginPoint
+			} else {
+				ep = segment.endPoint
+			}
+		}
+
+		// Lateral position on the segment
+		var laneIndex = -1
+		val bodyPosition = this.position.clone
+		val initialLaneLaw = this.bodyParameters.get("initialLaneLaw") as StochasticLaw
+		if (initialLaneLaw !== null) {
+			val road = bodyPosition.segment as RoadSegment
+			val lane = Math::round(initialLaneLaw.generateRandomValue) as int
+			val nb = road.getLaneCountForDirection(ep)
+			if (lane >= 0 && lane < nb) {
+				var laneCenter = road.getLaneCenter(lane)
+				bodyPosition.lateralDistance = laneCenter
+				laneIndex = lane
+			}
+		}
+
+		// Create the body
+		val body = environmentModel.createAgentBody(
+			timeManager,
+			this.bodyType,
+			bodyPosition,
+			laneIndex < 0, ep,
+			this.width, this.height)
+
+		// Force the initial speed
+		var sc = this.initialSpeedComputer
+		if (sc === null) {
+			val minSpeed = this.bodyParameters.getOrDefault("minSpeed", null)
+			val maxSpeed = this.bodyParameters.getOrDefault("maxSpeed", null)
+			val hasMinObj = minSpeed instanceof Number
+			val hasMaxObj = maxSpeed instanceof Number
+			if (hasMinObj && hasMaxObj) {
+				var segment = this.position.segment as RoadSegment
+				sc = new InitialSpeedRange(minSpeed as Number, maxSpeed as Number, segment.laneCount)
+			} else if (hasMinObj) {
+				sc = new InitialSpeedSingle(minSpeed as Number)
+			} else if (hasMaxObj) {
+				sc = new InitialSpeedSingle(maxSpeed as Number)
+			} else {
+				sc = new InitialSpeedSingle(0.0)
+			}
+			this.initialSpeedComputer = sc
+		}
+		if (laneIndex < 0) {
+			val lateralPosition = body.position.lateralDistance
+			val road = bodyPosition.segment as RoadSegment
+			var y = 0.0
+			for (var i = 0; laneIndex < 0 && i < road.laneCount; i++) {
+				y += road.getLaneSize(i)
+				if (lateralPosition <= i) {
+					laneIndex = i
+				}
+			}
+		}
+		body.forceLinearSpeedTo(sc.computeInitialSpeed(laneIndex))
+
+		//
+		return body
+	}
+
+	override canCreateBodyPhysically(timeManager : TimeManager, environmentModel : EnvironmentModel1d) : boolean {
+		return !environmentModel.hasObjectBelowDistance(
+			this.position,
+			typeof(PreferenceManager1d).singleton.agentSpawningFreeDistance)
+	}
+
+	/** 
+	 * Compute the initial speed for a car.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	private interface SpeedProvider {
+
+		def computeInitialSpeed(laneIndex : int) : double
+
+	}
+
+	/** 
+	 * Compute the initial speed for a car.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	private static class InitialSpeedRange implements SpeedProvider {
+
+		val lanes : DoubleRange[]
+
+		new (value0 : Number, value1 : Number, nbLanes : int) {
+			this.lanes = newArrayOfSize(nbLanes)
+			val v0 = value0.doubleValue
+			val v1 = value1.doubleValue
+			var min = Math::min(v0, v1)
+			var max = Math::max(v0, v1)
+			var range = (max - min) / nbLanes
+			var drange = range / 2.0
+			for (var i = 0; i < nbLanes; i++) {
+				var m = Math::max(min, min + i * range - drange)
+				var x = Math::min(max, m + range + drange)
+				lanes.set(i, new DoubleRange(m, x))
+			}
+		}
+
+		def computeInitialSpeed(laneIndex : int) : double {
+			val idx = MathUtil::clamp(laneIndex, 0, this.lanes.length - 1)
+			val range = this.lanes.get(idx)
+			return RANDOM.nextDouble * (range.max - range.min) + range.min
+		}
+
+	}
+
+	/** 
+	 * Compute the initial speed for a car.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	private static class InitialSpeedSingle implements SpeedProvider {
+
+		val speed : double
+
+		new (speed : Number) {
+			this.speed = speed.doubleValue
+		}
+
+		def computeInitialSpeed(laneIndex : int) : double {
+			return this.speed
+		}
+
+	}
+
+}

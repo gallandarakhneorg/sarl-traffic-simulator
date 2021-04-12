@@ -1,0 +1,2042 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.fx.preferences
+
+import com.dlsc.formsfx.model.validators.DoubleRangeValidator
+import com.dlsc.formsfx.model.validators.IntegerRangeValidator
+import com.dlsc.preferencesfx.model.Setting
+import com.sun.javafx.collections.ImmutableObservableList
+import javafx.beans.property.BooleanProperty
+import javafx.beans.property.DoubleProperty
+import javafx.beans.property.IntegerProperty
+import javafx.beans.property.ListProperty
+import javafx.beans.property.ObjectProperty
+import javafx.beans.property.SimpleBooleanProperty
+import javafx.beans.property.SimpleDoubleProperty
+import javafx.beans.property.SimpleIntegerProperty
+import javafx.beans.property.SimpleListProperty
+import javafx.beans.property.SimpleObjectProperty
+import org.arakhne.afc.simulation.framework.base.fx.preferences.AbstractFxPreferenceManager
+import org.arakhne.afc.simulation.framework.base.fx.preferences.PreferenceCategoryBuilder
+import org.arakhne.afc.simulation.framework.framework1d.preferences.CarFollowingModel
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+import org.arakhne.afc.util.EnumJsonTypeAdapter
+
+/**
+ * Manager of preferences for a simulator.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+abstract class AbstractFxPreferenceManager1d extends AbstractFxPreferenceManager implements PreferenceManager1d {
+
+	public static val PREFERENCES_GROUP_AGENTS_BODY = "BODY"
+
+	public static val PREFERENCES_CATEGORY_CARS = "CARS"
+
+	public static val PREFERENCES_GROUP_CARS_PROPERTIES = "CPROPERTIES"
+
+	public static val PREFERENCES_GROUP_CARS_DRAWERS = "CDRAWERS"
+
+	public static val PREFERENCES_CATEGORY_OBJS = "SOBJECTS"
+
+	public static val PREFERENCES_GROUP_OBJS_PROPERTIES = "OPROPERTIES"
+
+	public static val PREFERENCES_CATEGORY_SPAWNER = "SPAWNER"
+
+	public static val PREFERENCES_GROUP_SPAWNER_LOCATION = "SLOCATION"
+
+	public static val PREFERENCES_CATEGORY_ROADS = "ROADS"
+
+	public static val PREFERENCES_GROUP_ROADS_SPEEDLIMITS = "SPEEDLIMITS"
+
+	public static val PREFERENCES_GROUP_ROADS_ROADPHYSIC = "ROADPHYSIC"
+
+	def buildPreferenceCategories(extension builder : PreferenceCategoryBuilder) {
+		super.buildPreferenceCategories(builder)
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BODY,
+			Setting::of(AGENT_PERCEPTION_DISTANCE, this.agentPerceptionDistanceProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BODY,
+			Setting::of(AGENT_SPAWNING_FREE_DISTANCE, this.agentSpawningFreeDistanceProperty).validate(
+				DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BODY,
+			Setting::of(CONTROL_LESS_ON_CAR_CRASH, this.controlLessOnCarCrashProperty))
+
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(AGENT_REACTION_TIME, this.agentReactionTimeProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(AGENT_SAFETY_DISTANCE, this.agentSafetyDistanceProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(FREE_DRIVING_DISTANCE, this.freeDrivingDistanceProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(AGENT_SPEED_APPROXIMATION, this.agentSpeedApproximationProperty).validate(
+				DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(AGENT_DISTANCE_APPROXIMATION, this.agentDistanceApproximationProperty).validate(
+				DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(AGENT_PANEL_CONSIDERATION_DISTANCE, this.agentPanelConsiderationDistanceProperty).validate(
+				DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR,
+			Setting::of(CAR_FOLLOWING_MODEL, this.carFollowingModelAvailableValues, this.carFollowingModelProperty))
+
+		builder.create(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_PROPERTIES,
+			Setting::of(CAR_WIDTH, this.carWidthProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_PROPERTIES,
+			Setting::of(CAR_HEIGHT, this.carHeightProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_PROPERTIES,
+			Setting::of(CAR_CRASH_DURATION, this.carCrashDurationProperty).validate(
+				DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_DRAWERS,
+			ofColorType(CAR_COLOR, this.carColorProperty))
+		builder.create(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_DRAWERS,
+			ofColorType(CRASHED_CAR_COLOR, this.crashedCarColorProperty))
+
+		builder.create(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES,
+			Setting::of(OBJECT_MAXIMUM_SPEED, this.objectMaximumSpeedProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES,
+			Setting::of(OBJECT_MAXIMUM_ACCELERATION, this.objectMaximumAccelerationProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES,
+			Setting::of(OBJECT_MAXIMUM_DECELERATION, this.objectMaximumDecelerationProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES,
+			Setting::of(OBJECT_COMFORT_DECELERATION, this.objectComfortDecelerationProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES,
+			Setting::of(OBJECT_ENABLE_BACK_OFF, this.objectEnableBackOffProperty))
+		builder.create(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES,
+			Setting::of(OBJECT_AVOID_PHYSICAL_COLLISION, this.objectAvoidPhysicalCollisionProperty))
+
+		builder.create(PREFERENCES_CATEGORY_SPAWNER, PREFERENCES_GROUP_SPAWNER_LOCATION,
+			Setting::of(SPAWNER_ATTACH_TO_END_DISTANCE, this.spawnerAttachToEndDistanceProperty)
+			.validate(DoubleRangeValidator::atLeast(0.0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_BIKEWAY, this.speedLimitBikewayProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_FREEWAY, this.speedLimitFreewayProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_INTERCHANGE_RAMP, this.speedLimitInterchangeRampProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_LOCAL_ROAD, this.speedLimitLocalRoadProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_MAJOR_ROAD, this.speedLimitMajorRoadProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_MAJOR_URBAN_AXIS, this.speedLimitMajorUrbanAxisProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_OTHER, this.speedLimitOtherProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_PRIVACY_PATH, this.speedLimitPrivacyPathProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_SECONDARY_ROAD, this.speedLimitSecondaryRoadProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS,
+			Setting::of(SPEED_LIMIT_TRACK, this.speedLimitTrackProperty)
+			.validate(IntegerRangeValidator::atLeast(0, "MUST_BE_POSITIVE_OR_ZERO")))
+
+		builder.create(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_ROADPHYSIC,
+			Setting::of(ROAD_FRICTION_FACTOR, this.roadFrictionFactorProperty).validate(
+			DoubleRangeValidator::between(0.0, 1.0, "MUST_BE_ZERO_TO_ONE")))
+	}
+
+	override reread {
+		super.reread
+		rereadFreeDrivingDistance
+		rereadAgentPerceptionDistance
+		rereadAgentSafetyDistance
+		rereadAgentReactionTime
+		rereadAgentSpeedApproximation
+		rereadAgentDistanceApproximation
+		rereadAgentPanelConsiderationDistance
+		rereadObjectMaxAcceleration
+		rereadObjectMaxDeceleration
+		rereadObjectComfortDeceleration
+		rereadObjectMaxSpeed
+		rereadSpawnerAttachToEndDistance
+		rereadCarColor
+		rereadCrashedCarColor
+		rereadCarWidth
+		rereadCarHeight
+		rereadSpeedLimitInterchangeRamp
+		rereadSpeedLimitFreeway
+		rereadSpeedLimitMajorRoad
+		rereadSpeedLimitSecondaryRoad
+		rereadSpeedLimitLocalRoad
+		rereadSpeedLimitMajorUrbanAxis
+		rereadSpeedLimitPrivacyPath
+		rereadSpeedLimitTrack
+		rereadSpeedLimitBikeway
+		rereadSpeedLimitOther
+		rereadRoadFrictionFactor
+		rereadAgentSpawningFreeDistance
+		rereadObjectEnableBackOff
+		rereadObjectAvoidPhysicalCollision
+		rereadControlLessOnCarCrash
+		rereadCarCrashDuration
+		rereadCarFollowingModel
+	}
+
+	protected override saveProperties {
+		super.saveProperties
+		saveFreeDrivingDistance
+		saveAgentPerceptionDistance
+		saveAgentSafetyDistance
+		saveAgentReactionTime
+		saveAgentSpeedApproximation
+		saveAgentDistanceApproximation
+		saveAgentPanelConsiderationDistance
+		saveObjectMaxAcceleration
+		saveObjectMaxDeceleration
+		saveObjectComfortDeceleration
+		saveObjectMaxSpeed
+		saveSpawnerAttachToEndDistance
+		saveCarColor
+		saveCrashedCarColor
+		saveCarWidth
+		saveCarHeight
+		saveSpeedLimitInterchangeRamp
+		saveSpeedLimitFreeway
+		saveSpeedLimitMajorRoad
+		saveSpeedLimitSecondaryRoad
+		saveSpeedLimitLocalRoad
+		saveSpeedLimitMajorUrbanAxis
+		saveSpeedLimitPrivacyPath
+		saveSpeedLimitTrack
+		saveSpeedLimitBikeway
+		saveSpeedLimitOther
+		saveRoadFrictionFactor
+		saveAgentSpawningFreeDistance
+		saveObjectEnableBackOff
+		saveObjectAvoidPhysicalCollision
+		saveControlLessOnCarCrash
+		saveCarCrashDuration
+		saveCarFollowingModel
+	}
+
+	override setPropertiesToDefault {
+		super.setPropertiesToDefault
+		restoreFreeDrivingDistance
+		restoreAgentPerceptionDistance
+		restoreAgentSafetyDistance
+		restoreAgentReactionTime
+		restoreAgentSpeedApproximation
+		restoreAgentDistanceApproximation
+		restoreAgentPanelConsiderationDistance
+		restoreObjectMaxAcceleration
+		restoreObjectMaxDeceleration
+		restoreObjectComfortDeceleration
+		restoreObjectMaxSpeed
+		restoreSpawnerAttachToEndDistance
+		restoreCarColor
+		restoreCrashedCarColor
+		restoreCarWidth
+		restoreCarHeight
+		restoreSpeedLimitInterchangeRamp
+		restoreSpeedLimitFreeway
+		restoreSpeedLimitMajorRoad
+		restoreSpeedLimitSecondaryRoad
+		restoreSpeedLimitLocalRoad
+		restoreSpeedLimitMajorUrbanAxis
+		restoreSpeedLimitPrivacyPath
+		restoreSpeedLimitTrack
+		restoreSpeedLimitBikeway
+		restoreSpeedLimitOther
+		restoreRoadFrictionFactor
+		restoreAgentSpawningFreeDistance
+		restoreObjectEnableBackOff
+		restoreObjectAvoidPhysicalCollision
+		restoreControlLessOnCarCrash
+		restoreCarCrashDuration
+		restoreCarFollowingModel
+	}
+
+	
+	
+	
+	var freeDrivingDistance : DoubleProperty
+
+	/** Replies the free driving distance.
+	 */
+	def getFreeDrivingDistanceProperty : DoubleProperty {
+		if (this.freeDrivingDistance === null) {
+			this.freeDrivingDistance = new SimpleDoubleProperty(
+				this,
+				FREE_DRIVING_DISTANCE,
+				defaultFreeDrivingDistance) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.freeDrivingDistance
+	}
+
+	private def nameFreeDrivingDistance : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, FREE_DRIVING_DISTANCE)
+	}
+
+	private def defaultFreeDrivingDistance : double {
+		nameFreeDrivingDistance.prefDouble(FREE_DRIVING_DISTANCE_VALUE)
+	}
+
+	private def restoreFreeDrivingDistance {
+		freeDrivingDistanceProperty.set(FREE_DRIVING_DISTANCE_VALUE)
+	}
+
+	private def rereadFreeDrivingDistance {
+		if (this.freeDrivingDistance !== null) {
+			this.freeDrivingDistance.set(defaultFreeDrivingDistance)
+		}
+	}
+
+	private def saveFreeDrivingDistance {
+		if (this.freeDrivingDistance !== null) {
+			writeStore.putDouble(nameFreeDrivingDistance, this.freeDrivingDistance.get)
+		}
+	}
+
+	override getFreeDrivingDistance : double {
+		this.freeDrivingDistanceProperty.get
+	}
+	
+	override setFreeDrivingDistance(distance : double) {
+		this.freeDrivingDistanceProperty.set(distance)
+	}
+
+
+
+
+	var agentPerceptionDistance : DoubleProperty
+
+	/** Replies the agent perception distance.
+	 */
+	def getAgentPerceptionDistanceProperty : DoubleProperty {
+		if (this.agentPerceptionDistance === null) {
+			this.agentPerceptionDistance = new SimpleDoubleProperty(this, AGENT_PERCEPTION_DISTANCE,
+				defaultAgentPerceptionDistance) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.agentPerceptionDistance
+	}
+
+	private def nameAgentPerceptionDistance : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BODY, AGENT_PERCEPTION_DISTANCE)
+	}
+
+	private def defaultAgentPerceptionDistance : double {
+		nameAgentPerceptionDistance.prefDouble(AGENT_PERCEPTION_DISTANCE_VALUE)
+	}
+
+	private def restoreAgentPerceptionDistance {
+		agentPerceptionDistanceProperty.set(AGENT_PERCEPTION_DISTANCE_VALUE)
+	}
+
+	private def rereadAgentPerceptionDistance {
+		if (this.agentPerceptionDistance !== null) {
+			this.agentPerceptionDistance.set(defaultAgentPerceptionDistance)
+		}
+	}
+
+	private def saveAgentPerceptionDistance {
+		if (this.agentPerceptionDistance !== null) {
+			writeStore.putDouble(nameAgentPerceptionDistance, this.agentPerceptionDistance.get)
+		}
+	}
+
+	def getAgentPerceptionDistance : double {
+		this.agentPerceptionDistanceProperty.get
+	}
+	
+	def setAgentPerceptionDistance(distance : double) {
+		this.agentPerceptionDistanceProperty.set(distance)
+	}
+
+
+
+
+	var agentSafetyDistance : DoubleProperty
+
+	/** Replies the agent safety distance.
+	 */
+	def getAgentSafetyDistanceProperty : DoubleProperty {
+		if (this.agentSafetyDistance === null) {
+			this.agentSafetyDistance = new SimpleDoubleProperty(this, AGENT_SAFETY_DISTANCE,
+				defaultAgentSafetyDistance) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.agentSafetyDistance
+	}
+
+	private def nameAgentSafetyDistance : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, AGENT_SAFETY_DISTANCE)
+	}
+
+	private def defaultAgentSafetyDistance : double {
+		nameAgentSafetyDistance.prefDouble(AGENT_SAFETY_DISTANCE_VALUE)
+	}
+
+	private def restoreAgentSafetyDistance {
+		agentSafetyDistanceProperty.set(AGENT_SAFETY_DISTANCE_VALUE)
+	}
+
+	private def rereadAgentSafetyDistance {
+		if (this.agentSafetyDistance !== null) {
+			this.agentSafetyDistance.set(defaultAgentSafetyDistance)
+		}
+	}
+
+	private def saveAgentSafetyDistance {
+		if (this.agentSafetyDistance !== null) {
+			writeStore.putDouble(nameAgentSafetyDistance, this.agentSafetyDistance.get)
+		}
+	}
+
+	def getAgentSafetyDistance : double {
+		this.agentSafetyDistanceProperty.get
+	}
+	
+	def setAgentSafetyDistance(distance : double) {
+		this.agentSafetyDistanceProperty.set(distance)
+	}
+
+
+
+
+
+
+
+	var panelConsiderationDistance : DoubleProperty
+
+	/** Replies the distance under which a road sign is considered as significant by an agent.
+	 */
+	def getAgentPanelConsiderationDistanceProperty : DoubleProperty {
+		if (this.panelConsiderationDistance === null) {
+			this.panelConsiderationDistance = new SimpleDoubleProperty(this, AGENT_PANEL_CONSIDERATION_DISTANCE,
+				defaultAgentPanelConsiderationDistance) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.panelConsiderationDistance
+	}
+
+	private def nameAgentPanelConsiderationDistance : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, AGENT_PANEL_CONSIDERATION_DISTANCE)
+	}
+
+	private def defaultAgentPanelConsiderationDistance : double {
+		nameAgentPanelConsiderationDistance.prefDouble(AGENT_PANEL_CONSIDERATION_DISTANCE_VALUE)
+	}
+
+	private def restoreAgentPanelConsiderationDistance {
+		agentPanelConsiderationDistanceProperty.set(AGENT_PANEL_CONSIDERATION_DISTANCE_VALUE)
+	}
+
+	private def rereadAgentPanelConsiderationDistance {
+		if (this.panelConsiderationDistance !== null) {
+			this.panelConsiderationDistance.set(defaultAgentPanelConsiderationDistance)
+		}
+	}
+
+	private def saveAgentPanelConsiderationDistance {
+		if (this.panelConsiderationDistance !== null) {
+			writeStore.putDouble(nameAgentPanelConsiderationDistance, this.panelConsiderationDistance.get)
+		}
+	}
+
+	def getAgentPanelConsiderationDistance : double {
+		this.agentPanelConsiderationDistanceProperty.get
+	}
+
+	def setAgentPanelConsiderationDistance(distance : double) {
+		this.agentPanelConsiderationDistanceProperty.set(distance)
+	}
+
+
+
+
+	var agentReactionTime : DoubleProperty
+
+	/** Replies the agent security distance.
+	 */
+	def getAgentReactionTimeProperty : DoubleProperty {
+		if (this.agentReactionTime === null) {
+			this.agentReactionTime = new SimpleDoubleProperty(this, AGENT_REACTION_TIME,
+				defaultAgentReactionTime) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.agentReactionTime
+	}
+
+	private def nameAgentReactionTime : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, AGENT_REACTION_TIME)
+	}
+
+	private def defaultAgentReactionTime : double {
+		nameAgentReactionTime.prefDouble(AGENT_REACTION_TIME_VALUE)
+	}
+
+	private def restoreAgentReactionTime {
+		agentReactionTimeProperty.set(AGENT_REACTION_TIME_VALUE)
+	}
+
+	private def rereadAgentReactionTime {
+		if (this.agentReactionTime !== null) {
+			this.agentReactionTime.set(defaultAgentReactionTime)
+		}
+	}
+
+	private def saveAgentReactionTime {
+		if (this.agentReactionTime !== null) {
+			writeStore.putDouble(nameAgentReactionTime, this.agentReactionTime.get)
+		}
+	}
+
+	def getAgentReactionTime : double {
+		this.agentReactionTimeProperty.get
+	}
+	
+	def setAgentReactionTime(time : double) {
+		this.agentReactionTimeProperty.set(time)
+	}
+
+
+
+
+	var agentSpeedApproximation : DoubleProperty
+
+	/** Replies the speed approximation for "human" agents.
+	 */
+	def getAgentSpeedApproximationProperty : DoubleProperty {
+		if (this.agentSpeedApproximation === null) {
+			this.agentSpeedApproximation = new SimpleDoubleProperty(this, AGENT_SPEED_APPROXIMATION,
+				defaultAgentSpeedApproximation) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.agentSpeedApproximation
+	}
+
+	private def nameAgentSpeedApproximation : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, AGENT_SPEED_APPROXIMATION)
+	}
+
+	private def defaultAgentSpeedApproximation : double {
+		nameAgentSpeedApproximation.prefDouble(AGENT_SPEED_APPROXIMATION_VALUE)
+	}
+
+	private def restoreAgentSpeedApproximation {
+		agentSpeedApproximationProperty.set(AGENT_SPEED_APPROXIMATION_VALUE)
+	}
+
+	private def rereadAgentSpeedApproximation {
+		if (this.agentSpeedApproximation !== null) {
+			this.agentSpeedApproximation.set(defaultAgentSpeedApproximation)
+		}
+	}
+
+	private def saveAgentSpeedApproximation {
+		if (this.agentSpeedApproximation !== null) {
+			writeStore.putDouble(nameAgentSpeedApproximation, this.agentSpeedApproximation.get)
+		}
+	}
+
+	def getAgentSpeedApproximation : double {
+		this.agentSpeedApproximationProperty.get
+	}
+
+	def setAgentSpeedApproximation(speed : double) {
+		this.agentSpeedApproximationProperty.set(speed)
+	}
+
+
+
+
+	var agentDistanceApproximation : DoubleProperty
+
+	/** Replies the distance approximation for "human" agents.
+	 */
+	def getAgentDistanceApproximationProperty : DoubleProperty {
+		if (this.agentDistanceApproximation === null) {
+			this.agentDistanceApproximation = new SimpleDoubleProperty(this, AGENT_DISTANCE_APPROXIMATION,
+				defaultAgentDistanceApproximation) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.agentDistanceApproximation
+	}
+
+	private def nameAgentDistanceApproximation : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, AGENT_DISTANCE_APPROXIMATION)
+	}
+
+	private def defaultAgentDistanceApproximation : double {
+		nameAgentDistanceApproximation.prefDouble(AGENT_DISTANCE_APPROXIMATION_VALUE)
+	}
+
+	private def restoreAgentDistanceApproximation {
+		agentDistanceApproximationProperty.set(AGENT_DISTANCE_APPROXIMATION_VALUE)
+	}
+
+	private def rereadAgentDistanceApproximation {
+		if (this.agentDistanceApproximation !== null) {
+			this.agentDistanceApproximation.set(defaultAgentDistanceApproximation)
+		}
+	}
+
+	private def saveAgentDistanceApproximation {
+		if (this.agentDistanceApproximation !== null) {
+			writeStore.putDouble(nameAgentDistanceApproximation, this.agentDistanceApproximation.get)
+		}
+	}
+
+	def getAgentDistanceApproximation : double {
+		this.agentDistanceApproximationProperty.get
+	}
+
+	def setAgentDistanceApproximation(distance : double) {
+		this.agentDistanceApproximationProperty.set(distance)
+	}
+
+
+
+
+	var objectMaxAcceleration : DoubleProperty
+
+	/** Replies the object maximum acceleration.
+	 */
+	def getObjectMaximumAccelerationProperty : DoubleProperty {
+		if (this.objectMaxAcceleration === null) {
+			this.objectMaxAcceleration = new SimpleDoubleProperty(this, OBJECT_MAXIMUM_ACCELERATION,
+				defaultObjectMaxAcceleration) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.objectMaxAcceleration
+	}
+
+	private def nameObjectMaxAcceleration : String {
+		name(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES, OBJECT_MAXIMUM_ACCELERATION)
+	}
+
+	private def defaultObjectMaxAcceleration : double {
+		nameObjectMaxAcceleration.prefDouble(OBJECT_MAXIMUM_ACCELERATION_VALUE)
+	}
+
+	private def restoreObjectMaxAcceleration {
+		objectMaximumAccelerationProperty.set(OBJECT_MAXIMUM_ACCELERATION_VALUE)
+	}
+
+	private def rereadObjectMaxAcceleration {
+		if (this.objectMaxAcceleration !== null) {
+			this.objectMaxAcceleration.set(defaultObjectMaxAcceleration)
+		}
+	}
+
+	private def saveObjectMaxAcceleration {
+		if (this.objectMaxAcceleration !== null) {
+			writeStore.putDouble(nameObjectMaxAcceleration, this.objectMaxAcceleration.get)
+		}
+	}
+
+	def getObjectMaximumAcceleration : double {
+		this.objectMaximumAccelerationProperty.get
+	}
+	
+	def setObjectMaximumAcceleration(acceleration : double) {
+		this.objectMaximumAccelerationProperty.set(acceleration)
+	}
+
+
+
+
+	var objectMaxDeceleration : DoubleProperty
+
+	/** Replies the object maximum deceleration.
+	 */
+	def getObjectMaximumDecelerationProperty : DoubleProperty {
+		if (this.objectMaxDeceleration === null) {
+			this.objectMaxDeceleration = new SimpleDoubleProperty(this, OBJECT_MAXIMUM_DECELERATION,
+				defaultObjectMaxDeceleration) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.objectMaxDeceleration
+	}
+
+	private def nameObjectMaxDeceleration : String {
+		name(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES, OBJECT_MAXIMUM_DECELERATION)
+	}
+
+	private def defaultObjectMaxDeceleration : double {
+		nameObjectMaxDeceleration.prefDouble(OBJECT_MAXIMUM_DECELERATION_VALUE)
+	}
+
+	private def restoreObjectMaxDeceleration {
+		objectMaximumDecelerationProperty.set(OBJECT_MAXIMUM_DECELERATION_VALUE)
+	}
+
+	private def rereadObjectMaxDeceleration {
+		if (this.objectMaxDeceleration !== null) {
+			this.objectMaxDeceleration.set(defaultObjectMaxDeceleration)
+		}
+	}
+
+	private def saveObjectMaxDeceleration {
+		if (this.objectMaxDeceleration !== null) {
+			writeStore.putDouble(nameObjectMaxDeceleration, this.objectMaxDeceleration.get)
+		}
+	}
+
+	def getObjectMaximumDeceleration : double {
+		this.objectMaximumDecelerationProperty.get
+	}
+	
+	def setObjectMaximumDeceleration(deceleration : double) {
+		this.objectMaximumDecelerationProperty.set(deceleration)
+	}
+
+
+
+
+	var objectComfortDeceleration : DoubleProperty
+
+	/** Replies the object comfort deceleration.
+	 */
+	def getObjectComfortDecelerationProperty : DoubleProperty {
+		if (this.objectComfortDeceleration === null) {
+			this.objectComfortDeceleration = new SimpleDoubleProperty(this, OBJECT_COMFORT_DECELERATION,
+				defaultObjectComfortDeceleration) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.objectComfortDeceleration
+	}
+
+	private def nameObjectComfortDeceleration : String {
+		name(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES, OBJECT_COMFORT_DECELERATION)
+	}
+
+	private def defaultObjectComfortDeceleration : double {
+		nameObjectComfortDeceleration.prefDouble(OBJECT_COMFORT_DECELERATION_VALUE)
+	}
+
+	private def restoreObjectComfortDeceleration {
+		objectComfortDecelerationProperty.set(OBJECT_COMFORT_DECELERATION_VALUE)
+	}
+
+	private def rereadObjectComfortDeceleration {
+		if (this.objectComfortDeceleration !== null) {
+			this.objectComfortDeceleration.set(defaultObjectComfortDeceleration)
+		}
+	}
+
+	private def saveObjectComfortDeceleration {
+		if (this.objectComfortDeceleration !== null) {
+			writeStore.putDouble(nameObjectComfortDeceleration, this.objectComfortDeceleration.get)
+		}
+	}
+
+	def getObjectComfortDeceleration : double {
+		this.objectComfortDecelerationProperty.get
+	}
+	
+	def setObjectComfortDeceleration(deceleration : double) {
+		this.objectComfortDecelerationProperty.set(deceleration)
+	}
+
+
+
+
+	var objectMaxSpeed : DoubleProperty
+
+	/** Replies the object maximum speed.
+	 */
+	def getObjectMaximumSpeedProperty : DoubleProperty {
+		if (this.objectMaxSpeed === null) {
+			this.objectMaxSpeed = new SimpleDoubleProperty(this, OBJECT_MAXIMUM_SPEED, defaultObjectMaxSpeed) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.objectMaxSpeed
+	}
+
+	private def nameObjectMaxSpeed : String {
+		name(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES, OBJECT_MAXIMUM_SPEED)
+	}
+
+	private def defaultObjectMaxSpeed : double {
+		nameObjectMaxSpeed.prefDouble(OBJECT_MAXIMUM_SPEED_VALUE)
+	}
+
+	private def restoreObjectMaxSpeed {
+		objectMaximumSpeedProperty.set(OBJECT_MAXIMUM_SPEED_VALUE)
+	}
+
+	private def rereadObjectMaxSpeed {
+		if (this.objectMaxSpeed !== null) {
+			this.objectMaxSpeed.set(defaultObjectMaxSpeed)
+		}
+	}
+
+	private def saveObjectMaxSpeed {
+		if (this.objectMaxSpeed !== null) {
+			writeStore.putDouble(nameObjectMaxSpeed, this.objectMaxSpeed.get)
+		}
+	}
+
+	def getObjectMaximumSpeed : double {
+		this.objectMaximumSpeedProperty.get
+	}
+	
+	def setObjectMaximumSpeed(speed : double) {
+		this.objectMaximumSpeedProperty.set(speed)
+	}
+
+
+
+
+	var spawnerAttachToEndDistance : DoubleProperty
+
+	/** Replies the object maximum speed.
+	 */
+	def getSpawnerAttachToEndDistanceProperty : DoubleProperty {
+		if (this.spawnerAttachToEndDistance === null) {
+			this.spawnerAttachToEndDistance = new SimpleDoubleProperty(this, SPAWNER_ATTACH_TO_END_DISTANCE,
+				defaultSpawnerAttachToEndDistance) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.spawnerAttachToEndDistance
+	}
+
+	private def nameSpawnerAttachToEndDistance : String {
+		name(PREFERENCES_CATEGORY_SPAWNER, PREFERENCES_GROUP_SPAWNER_LOCATION, SPAWNER_ATTACH_TO_END_DISTANCE)
+	}
+
+	private def defaultSpawnerAttachToEndDistance : double {
+		nameSpawnerAttachToEndDistance.prefDouble(SPAWNER_ATTACH_TO_END_DISTANCE_VALUE)
+	}
+
+	private def restoreSpawnerAttachToEndDistance {
+		spawnerAttachToEndDistanceProperty.set(SPAWNER_ATTACH_TO_END_DISTANCE_VALUE)
+	}
+
+	private def rereadSpawnerAttachToEndDistance {
+		if (this.spawnerAttachToEndDistance !== null) {
+			this.spawnerAttachToEndDistance.set(defaultSpawnerAttachToEndDistance)
+		}
+	}
+
+	private def saveSpawnerAttachToEndDistance {
+		if (this.spawnerAttachToEndDistance !== null) {
+			writeStore.putDouble(nameSpawnerAttachToEndDistance, this.spawnerAttachToEndDistance.get)
+		}
+	}
+
+	def getSpawnerAttachToEndDistance : double {
+		this.spawnerAttachToEndDistanceProperty.get
+	}
+	
+	def setSpawnerAttachToEndDistance(distance : double) {
+		this.spawnerAttachToEndDistanceProperty.set(distance)
+	}
+
+
+
+
+	var carColor : IntegerProperty
+
+	/** Replies the car color.
+	 */
+	def getCarColorProperty : IntegerProperty {
+		if (this.carColor === null) {
+			this.carColor = new SimpleIntegerProperty(this, CAR_COLOR, defaultCarColor)
+		}
+		return this.carColor
+	}
+
+	private def nameCarColor : String {
+		name(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_DRAWERS, CAR_COLOR)
+	}
+
+	private def defaultCarColor : int {
+		nameCarColor.prefInt(CAR_COLOR_VALUE)
+	}
+
+	private def restoreCarColor {
+		carColorProperty.set(CAR_COLOR_VALUE)
+	}
+
+	private def rereadCarColor {
+		if (this.carColor !== null) {
+			this.carColor.set(defaultCarColor)
+		}
+	}
+
+	private def saveCarColor {
+		if (this.carColor !== null) {
+			writeStore.putInt(nameCarColor, this.carColor.get)
+		}
+	}
+
+	def getCarColor : int {
+		this.carColorProperty.get
+	}
+	
+	def setCarColor(color : int) {
+		this.carColorProperty.set(color)
+	}
+
+
+
+
+
+	var crashedCarColor : IntegerProperty
+
+	/** Replies the crashed car color.
+	 */
+	def getCrashedCarColorProperty : IntegerProperty {
+		if (this.crashedCarColor === null) {
+			this.crashedCarColor = new SimpleIntegerProperty(this, CRASHED_CAR_COLOR, defaultCrashedCarColor)
+		}
+		return this.crashedCarColor
+	}
+
+	private def nameCrashedCarColor : String {
+		name(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_DRAWERS, CRASHED_CAR_COLOR)
+	}
+
+	private def defaultCrashedCarColor : int {
+		nameCrashedCarColor.prefInt(CRASHED_CAR_COLOR_VALUE)
+	}
+
+	private def restoreCrashedCarColor {
+		crashedCarColorProperty.set(CRASHED_CAR_COLOR_VALUE)
+	}
+
+	private def rereadCrashedCarColor {
+		if (this.crashedCarColor !== null) {
+			this.crashedCarColor.set(defaultCrashedCarColor)
+		}
+	}
+
+	private def saveCrashedCarColor {
+		if (this.crashedCarColor !== null) {
+			writeStore.putInt(nameCrashedCarColor, this.crashedCarColor.get)
+		}
+	}
+
+	def getCrashedCarColor : int {
+		this.crashedCarColorProperty.get
+	}
+
+	def setCrashedCarColor(color : int) {
+		this.crashedCarColorProperty.set(color)
+	}
+
+
+
+
+	var carWidth : DoubleProperty
+
+	/** Replies the car width.
+	 */
+	def getCarWidthProperty : DoubleProperty {
+		if (this.carWidth === null) {
+			this.carWidth = new SimpleDoubleProperty(this, CAR_WIDTH, defaultCarWidth) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.carWidth
+	}
+
+	private def nameCarWidth : String {
+		name(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_PROPERTIES, CAR_WIDTH)
+	}
+
+	private def defaultCarWidth : double {
+		nameCarWidth.prefDouble(CAR_WIDTH_VALUE)
+	}
+
+	private def restoreCarWidth {
+		carWidthProperty.set(CAR_WIDTH_VALUE)
+	}
+
+	private def rereadCarWidth {
+		if (this.carWidth !== null) {
+			this.carWidth.set(defaultCarWidth)
+		}
+	}
+
+	private def saveCarWidth {
+		if (this.carWidth !== null) {
+			writeStore.putDouble(nameCarWidth, this.carWidth.get)
+		}
+	}
+
+	def getCarWidth : double {
+		this.carWidthProperty.get
+	}
+	
+	def setCarWidth(width : double) {
+		this.carWidthProperty.set(width)
+	}
+
+
+
+
+	var carHeight : DoubleProperty
+
+	/** Replies the car height.
+	 */
+	def getCarHeightProperty : DoubleProperty {
+		if (this.carHeight === null) {
+			this.carHeight = new SimpleDoubleProperty(this, CAR_HEIGHT, defaultCarHeight) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.carHeight
+	}
+
+	private def nameCarHeight : String {
+		name(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_PROPERTIES, CAR_HEIGHT)
+	}
+
+	private def defaultCarHeight : double {
+		nameCarHeight.prefDouble(CAR_HEIGHT_VALUE)
+	}
+
+	private def restoreCarHeight {
+		carHeightProperty.set(CAR_HEIGHT_VALUE)
+	}
+
+	private def rereadCarHeight {
+		if (this.carHeight !== null) {
+			this.carHeight.set(defaultCarHeight)
+		}
+	}
+
+	private def saveCarHeight {
+		if (this.carHeight !== null) {
+			writeStore.putDouble(nameCarHeight, this.carHeight.get)
+		}
+	}
+
+	def getCarHeight : double {
+		this.carHeightProperty.get
+	}
+	
+	def setCarHeight(height : double) {
+		this.carHeightProperty.set(height)
+	}
+
+
+
+
+	var speedLimitInterchangeRamp : IntegerProperty
+
+	/** Replies the speed limit for interchange ramp.
+	 */
+	def getSpeedLimitInterchangeRampProperty : IntegerProperty {
+		if (this.speedLimitInterchangeRamp === null) {
+			this.speedLimitInterchangeRamp = new SimpleIntegerProperty(this, SPEED_LIMIT_INTERCHANGE_RAMP,
+				defaultSpeedLimitInterchangeRamp) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitInterchangeRamp
+	}
+
+	private def nameSpeedLimitInterchangeRamp : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_INTERCHANGE_RAMP)
+	}
+
+	private def defaultSpeedLimitInterchangeRamp : int {
+		nameSpeedLimitInterchangeRamp.prefInt(SPEED_LIMIT_INTERCHANGE_RAMP_VALUE)
+	}
+
+	private def restoreSpeedLimitInterchangeRamp {
+		speedLimitInterchangeRampProperty.set(SPEED_LIMIT_INTERCHANGE_RAMP_VALUE)
+	}
+
+	private def rereadSpeedLimitInterchangeRamp {
+		if (this.speedLimitInterchangeRamp !== null) {
+			this.speedLimitInterchangeRamp.set(defaultSpeedLimitInterchangeRamp)
+		}
+	}
+
+	private def saveSpeedLimitInterchangeRamp {
+		if (this.speedLimitInterchangeRamp !== null) {
+			writeStore.putDouble(nameSpeedLimitInterchangeRamp, this.speedLimitInterchangeRamp.get)
+		}
+	}
+
+	def getSpeedLimitInterchangeRamp : int {
+		this.speedLimitInterchangeRampProperty.get
+	}
+	
+	def setSpeedLimitInterchangeRamp(limit : int) {
+		this.speedLimitInterchangeRampProperty.set(limit)
+	}
+
+
+
+	var speedLimitFreeway : IntegerProperty
+
+	/** Replies the speed limit for freeway.
+	 */
+	def getSpeedLimitFreewayProperty : IntegerProperty {
+		if (this.speedLimitFreeway === null) {
+			this.speedLimitFreeway = new SimpleIntegerProperty(this, SPEED_LIMIT_FREEWAY, defaultSpeedLimitFreeway) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitFreeway
+	}
+
+	private def nameSpeedLimitFreeway : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_FREEWAY)
+	}
+
+	private def defaultSpeedLimitFreeway : int {
+		nameSpeedLimitFreeway.prefInt(SPEED_LIMIT_FREEWAY_VALUE)
+	}
+
+	private def restoreSpeedLimitFreeway {
+		speedLimitFreewayProperty.set(SPEED_LIMIT_FREEWAY_VALUE)
+	}
+
+	private def rereadSpeedLimitFreeway {
+		if (this.speedLimitFreeway !== null) {
+			this.speedLimitFreeway.set(defaultSpeedLimitFreeway)
+		}
+	}
+
+	private def saveSpeedLimitFreeway {
+		if (this.speedLimitFreeway !== null) {
+			writeStore.putDouble(nameSpeedLimitFreeway, this.speedLimitFreeway.get)
+		}
+	}
+
+	def getSpeedLimitFreeway : int {
+		this.speedLimitFreewayProperty.get
+	}
+	
+	def setSpeedLimitFreeway(limit : int) {
+		this.speedLimitFreewayProperty.set(limit)
+	}
+
+
+
+
+	var speedLimitMajorRoad : IntegerProperty
+
+	/** Replies the speed limit for major road.
+	 */
+	def getSpeedLimitMajorRoadProperty : IntegerProperty {
+		if (this.speedLimitMajorRoad === null) {
+			this.speedLimitMajorRoad = new SimpleIntegerProperty(this, SPEED_LIMIT_MAJOR_ROAD,
+				defaultSpeedLimitMajorRoad) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitMajorRoad
+	}
+
+	private def nameSpeedLimitMajorRoad : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_MAJOR_ROAD)
+	}
+
+	private def defaultSpeedLimitMajorRoad : int {
+		nameSpeedLimitMajorRoad.prefInt(SPEED_LIMIT_MAJOR_ROAD_VALUE)
+	}
+
+	private def restoreSpeedLimitMajorRoad {
+		speedLimitMajorRoadProperty.set(SPEED_LIMIT_MAJOR_ROAD_VALUE)
+	}
+
+	private def rereadSpeedLimitMajorRoad {
+		if (this.speedLimitMajorRoad !== null) {
+			this.speedLimitMajorRoad.set(defaultSpeedLimitMajorRoad)
+		}
+	}
+
+	private def saveSpeedLimitMajorRoad {
+		if (this.speedLimitMajorRoad !== null) {
+			writeStore.putDouble(nameSpeedLimitMajorRoad, this.speedLimitMajorRoad.get)
+		}
+	}
+	
+	def getSpeedLimitMajorRoad : int {
+		this.speedLimitMajorRoadProperty.get
+	}
+	
+	def setSpeedLimitMajorRoad(limit : int) {
+		this.speedLimitMajorRoadProperty.set(limit)
+	}
+
+
+
+	var speedLimitSecondaryRoad : IntegerProperty
+
+	/** Replies the speed limit for secondary road.
+	 */
+	def getSpeedLimitSecondaryRoadProperty : IntegerProperty {
+		if (this.speedLimitSecondaryRoad === null) {
+			this.speedLimitSecondaryRoad = new SimpleIntegerProperty(this, SPEED_LIMIT_SECONDARY_ROAD,
+				defaultSpeedLimitSecondaryRoad) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitSecondaryRoad
+	}
+
+	private def nameSpeedLimitSecondaryRoad : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_SECONDARY_ROAD)
+	}
+
+	private def defaultSpeedLimitSecondaryRoad : int {
+		nameSpeedLimitSecondaryRoad.prefInt(SPEED_LIMIT_SECONDARY_ROAD_VALUE)
+	}
+
+	private def restoreSpeedLimitSecondaryRoad {
+		speedLimitSecondaryRoadProperty.set(SPEED_LIMIT_SECONDARY_ROAD_VALUE)
+	}
+
+	private def rereadSpeedLimitSecondaryRoad {
+		if (this.speedLimitSecondaryRoad !== null) {
+			this.speedLimitSecondaryRoad.set(defaultSpeedLimitSecondaryRoad)
+		}
+	}
+
+	private def saveSpeedLimitSecondaryRoad {
+		if (this.speedLimitSecondaryRoad !== null) {
+			writeStore.
+				putDouble(nameSpeedLimitSecondaryRoad, this.speedLimitSecondaryRoad.get)
+		}
+	}
+
+	def getSpeedLimitSecondaryRoad : int {
+		this.speedLimitSecondaryRoadProperty.get
+	}
+
+	def setSpeedLimitSecondaryRoad(limit : int) {
+		this.speedLimitSecondaryRoadProperty.set(limit)
+	}
+
+
+
+	var speedLimitLocalRoad : IntegerProperty
+
+	/** Replies the speed limit for local road.
+	 */
+	def getSpeedLimitLocalRoadProperty : IntegerProperty {
+		if (this.speedLimitLocalRoad === null) {
+			this.speedLimitLocalRoad = new SimpleIntegerProperty(this, SPEED_LIMIT_LOCAL_ROAD,
+				defaultSpeedLimitLocalRoad) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitLocalRoad
+	}
+
+	private def nameSpeedLimitLocalRoad : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_LOCAL_ROAD)
+	}
+
+	private def defaultSpeedLimitLocalRoad : int {
+		nameSpeedLimitLocalRoad.prefInt(SPEED_LIMIT_LOCAL_ROAD_VALUE)
+	}
+
+	private def restoreSpeedLimitLocalRoad {
+		speedLimitLocalRoadProperty.set(SPEED_LIMIT_LOCAL_ROAD_VALUE)
+	}
+
+	private def rereadSpeedLimitLocalRoad {
+		if (this.speedLimitLocalRoad !== null) {
+			this.speedLimitLocalRoad.set(defaultSpeedLimitLocalRoad)
+		}
+	}
+
+	private def saveSpeedLimitLocalRoad {
+		if (this.speedLimitLocalRoad !== null) {
+			writeStore.putDouble(nameSpeedLimitLocalRoad, this.speedLimitLocalRoad.get)
+		}
+	}
+
+	def getSpeedLimitLocalRoad : int {
+		this.speedLimitLocalRoadProperty.get
+	}
+	
+	def setSpeedLimitLocalRoad(limit : int) {
+		this.speedLimitLocalRoadProperty.set(limit)
+	}
+
+
+
+	var speedLimitMajorUrbanAxis : IntegerProperty
+
+	/** Replies the speed limit for major urban axis.
+	 */
+	def getSpeedLimitMajorUrbanAxisProperty : IntegerProperty {
+		if (this.speedLimitMajorUrbanAxis === null) {
+			this.speedLimitMajorUrbanAxis = new SimpleIntegerProperty(this, SPEED_LIMIT_MAJOR_URBAN_AXIS,
+				defaultSpeedLimitMajorUrbanAxis) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitMajorUrbanAxis
+	}
+
+	private def nameSpeedLimitMajorUrbanAxis : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_MAJOR_URBAN_AXIS)
+	}
+
+	private def defaultSpeedLimitMajorUrbanAxis : int {
+		nameSpeedLimitMajorUrbanAxis.prefInt(SPEED_LIMIT_MAJOR_URBAN_AXIS_VALUE)
+	}
+
+	private def restoreSpeedLimitMajorUrbanAxis {
+		speedLimitMajorUrbanAxisProperty.set(SPEED_LIMIT_MAJOR_URBAN_AXIS_VALUE)
+	}
+
+	private def rereadSpeedLimitMajorUrbanAxis {
+		if (this.speedLimitMajorUrbanAxis !== null) {
+			this.speedLimitMajorUrbanAxis.set(defaultSpeedLimitMajorUrbanAxis)
+		}
+	}
+
+	private def saveSpeedLimitMajorUrbanAxis {
+		if (this.speedLimitMajorUrbanAxis !== null) {
+			writeStore.
+				putDouble(nameSpeedLimitMajorUrbanAxis, this.speedLimitMajorUrbanAxis.get)
+		}
+	}
+
+	def getSpeedLimitMajorUrbanAxis : int {
+		this.speedLimitMajorUrbanAxisProperty.get
+	}
+	
+	def setSpeedLimitMajorUrbanAxis(limit : int) {
+		this.speedLimitMajorUrbanAxisProperty.set(limit)
+	}
+
+
+
+
+	var speedLimitPrivacyPath : IntegerProperty
+
+	/** Replies the speed limit for privacy path.
+	 */
+	def getSpeedLimitPrivacyPathProperty : IntegerProperty {
+		if (this.speedLimitPrivacyPath === null) {
+			this.speedLimitPrivacyPath = new SimpleIntegerProperty(this, SPEED_LIMIT_PRIVACY_PATH,
+				defaultSpeedLimitPrivacyPath) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitPrivacyPath
+	}
+
+	private def nameSpeedLimitPrivacyPath : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_PRIVACY_PATH)
+	}
+
+	private def defaultSpeedLimitPrivacyPath : int {
+		nameSpeedLimitPrivacyPath.prefInt(SPEED_LIMIT_PRIVACY_PATH_VALUE)
+	}
+
+	private def restoreSpeedLimitPrivacyPath {
+		speedLimitPrivacyPathProperty.set(SPEED_LIMIT_PRIVACY_PATH_VALUE)
+	}
+
+	private def rereadSpeedLimitPrivacyPath {
+		if (this.speedLimitPrivacyPath !== null) {
+			this.speedLimitPrivacyPath.set(defaultSpeedLimitPrivacyPath)
+		}
+	}
+
+	private def saveSpeedLimitPrivacyPath {
+		if (this.speedLimitPrivacyPath !== null) {
+			writeStore.putDouble(nameSpeedLimitPrivacyPath, this.speedLimitPrivacyPath.get)
+		}
+	}
+
+	def getSpeedLimitPrivacyPath : int {
+		this.speedLimitPrivacyPathProperty.get
+	}
+	
+	def setSpeedLimitPrivacyPath(limit : int) {
+		this.speedLimitPrivacyPathProperty.set(limit)
+	}
+
+
+
+
+	var speedLimitTrack : IntegerProperty
+
+	/** Replies the speed limit for track.
+	 */
+	def getSpeedLimitTrackProperty : IntegerProperty {
+		if (this.speedLimitTrack === null) {
+			this.speedLimitTrack = new SimpleIntegerProperty(this, SPEED_LIMIT_TRACK, defaultSpeedLimitTrack) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitTrack
+	}
+
+	private def nameSpeedLimitTrack : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_TRACK)
+	}
+
+	private def defaultSpeedLimitTrack : int {
+		nameSpeedLimitTrack.prefInt(SPEED_LIMIT_TRACK_VALUE)
+	}
+
+	private def restoreSpeedLimitTrack {
+		speedLimitTrackProperty.set(SPEED_LIMIT_TRACK_VALUE)
+	}
+
+	private def rereadSpeedLimitTrack {
+		if (this.speedLimitTrack !== null) {
+			this.speedLimitTrack.set(defaultSpeedLimitTrack)
+		}
+	}
+
+	private def saveSpeedLimitTrack {
+		if (this.speedLimitTrack !== null) {
+			writeStore.putDouble(nameSpeedLimitTrack, this.speedLimitTrack.get)
+		}
+	}
+
+	def getSpeedLimitTrack : int {
+		this.speedLimitTrackProperty.get
+	}
+	
+	def setSpeedLimitTrack(limit : int) {
+		this.speedLimitTrackProperty.set(limit)
+	}
+
+
+
+	var speedLimitBikeway : IntegerProperty
+
+	/** Replies the speed limit for bikeway.
+	 */
+	def getSpeedLimitBikewayProperty : IntegerProperty {
+		if (this.speedLimitBikeway === null) {
+			this.speedLimitBikeway = new SimpleIntegerProperty(this, SPEED_LIMIT_BIKEWAY, defaultSpeedLimitBikeway) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitBikeway
+	}
+
+	private def nameSpeedLimitBikeway : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_BIKEWAY)
+	}
+
+	private def defaultSpeedLimitBikeway : int {
+		nameSpeedLimitBikeway.prefInt(SPEED_LIMIT_BIKEWAY_VALUE)
+	}
+
+	private def restoreSpeedLimitBikeway {
+		speedLimitBikewayProperty.set(SPEED_LIMIT_BIKEWAY_VALUE)
+	}
+
+	private def rereadSpeedLimitBikeway {
+		if (this.speedLimitBikeway !== null) {
+			this.speedLimitBikeway.set(defaultSpeedLimitBikeway)
+		}
+	}
+
+	private def saveSpeedLimitBikeway {
+		if (this.speedLimitBikeway !== null) {
+			writeStore.putDouble(nameSpeedLimitBikeway, this.speedLimitBikeway.get)
+		}
+	}
+
+	def getSpeedLimitBikeway : int {
+		this.speedLimitBikewayProperty.get
+	}
+	
+	def setSpeedLimitBikeway(limit : int) {
+		this.speedLimitBikewayProperty.set(limit)
+	}
+
+
+
+
+	var speedLimitOther: IntegerProperty
+
+	/** Replies the speed limit for other way.
+	 */
+	def getSpeedLimitOtherProperty : IntegerProperty {
+		if (this.speedLimitOther === null) {
+			this.speedLimitOther = new SimpleIntegerProperty(this, SPEED_LIMIT_OTHER, defaultSpeedLimitOther) {
+				protected override invalidated {
+					var value = get
+					if (value < 0) {
+						set(0)
+					}
+				}
+			}
+		}
+		return this.speedLimitOther
+	}
+
+	private def nameSpeedLimitOther : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_SPEEDLIMITS, SPEED_LIMIT_OTHER)
+	}
+
+	private def defaultSpeedLimitOther : int {
+		nameSpeedLimitOther.prefInt(SPEED_LIMIT_OTHER_VALUE)
+	}
+
+	private def restoreSpeedLimitOther {
+		speedLimitOtherProperty.set(SPEED_LIMIT_OTHER_VALUE)
+	}
+
+	private def rereadSpeedLimitOther {
+		if (this.speedLimitOther !== null) {
+			this.speedLimitOther.set(defaultSpeedLimitOther)
+		}
+	}
+
+	private def saveSpeedLimitOther {
+		if (this.speedLimitOther !== null) {
+			writeStore.putDouble(nameSpeedLimitOther, this.speedLimitOther.get)
+		}
+	}
+
+	def getSpeedLimitOther : int {
+		this.speedLimitOtherProperty.get
+	}
+	
+	def setSpeedLimitOther(limit : int) {
+		this.speedLimitOtherProperty.set(limit)
+	}
+
+
+
+
+
+
+	var roadFrictionFactor : DoubleProperty
+
+	/** Replies the factor for road friction.
+	 */
+	def getRoadFrictionFactorProperty : DoubleProperty {
+		if (this.roadFrictionFactor === null) {
+			this.roadFrictionFactor = new SimpleDoubleProperty(this, ROAD_FRICTION_FACTOR, defaultRoadFrictionFactor) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.roadFrictionFactor
+	}
+
+	private def nameRoadFrictionFactor : String {
+		name(PREFERENCES_CATEGORY_ROADS, PREFERENCES_GROUP_ROADS_ROADPHYSIC, ROAD_FRICTION_FACTOR)
+	}
+
+	private def defaultRoadFrictionFactor : double {
+		nameRoadFrictionFactor.prefDouble(ROAD_FRICTION_FACTOR_VALUE)
+	}
+
+	private def restoreRoadFrictionFactor {
+		roadFrictionFactorProperty.set(ROAD_FRICTION_FACTOR_VALUE)
+	}
+
+	private def rereadRoadFrictionFactor {
+		if (this.roadFrictionFactor !== null) {
+			this.roadFrictionFactor.set(defaultRoadFrictionFactor)
+		}
+	}
+
+	private def saveRoadFrictionFactor {
+		if (this.roadFrictionFactor !== null) {
+			writeStore.putDouble(nameRoadFrictionFactor, this.roadFrictionFactor.get)
+		}
+	}
+
+	def getRoadFrictionFactor : double {
+		this.roadFrictionFactorProperty.get
+	}
+
+	def setRoadFrictionFactor(factor : double) {
+		this.roadFrictionFactorProperty.set(factor)
+	}
+
+
+
+
+
+
+	var agentSpawningFreeDistance : DoubleProperty
+
+	/** Replies the distance below which an agent cannot be spawn if another agent is close than.
+	 */
+	def getAgentSpawningFreeDistanceProperty : DoubleProperty {
+		if (this.agentSpawningFreeDistance === null) {
+			this.agentSpawningFreeDistance = new SimpleDoubleProperty(this, AGENT_SPAWNING_FREE_DISTANCE,
+				defaultAgentSpawningFreeDistance) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			}
+		}
+		return this.agentSpawningFreeDistance
+	}
+
+	private def nameAgentSpawningFreeDistance : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BODY, AGENT_SPAWNING_FREE_DISTANCE)
+	}
+
+	private def defaultAgentSpawningFreeDistance : double {
+		nameAgentSpawningFreeDistance.prefDouble(AGENT_SPAWNING_FREE_DISTANCE_VALUE)
+	}
+
+	private def restoreAgentSpawningFreeDistance {
+		agentSpawningFreeDistanceProperty.set(AGENT_SPAWNING_FREE_DISTANCE_VALUE)
+	}
+
+	private def rereadAgentSpawningFreeDistance {
+		if (this.agentSpawningFreeDistance !== null) {
+			this.agentSpawningFreeDistance.set(defaultAgentSpawningFreeDistance)
+		}
+	}
+
+	private def saveAgentSpawningFreeDistance {
+		if (this.agentSpawningFreeDistance !== null) {
+			writeStore.putDouble(nameAgentSpawningFreeDistance, this.agentSpawningFreeDistance.get)
+		}
+	}
+
+	def getAgentSpawningFreeDistance : double {
+		this.agentSpawningFreeDistanceProperty.get
+	}
+
+	def setAgentSpawningFreeDistance(distance : double) {
+		this.agentSpawningFreeDistanceProperty.set(distance)
+	}
+
+
+
+
+
+	var objectEnableBackOff : BooleanProperty
+
+	/** Replies if vehicles could back off.
+	 */
+	def getObjectEnableBackOffProperty : BooleanProperty {
+		if (this.objectEnableBackOff === null) {
+			this.objectEnableBackOff = new SimpleBooleanProperty(this, OBJECT_ENABLE_BACK_OFF, defaultObjectEnableBackOff)
+		}
+		return this.objectEnableBackOff
+	}
+
+	private def nameObjectEnableBackOff : String {
+		name(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES, OBJECT_ENABLE_BACK_OFF)
+	}
+
+	private def defaultObjectEnableBackOff : boolean {
+		nameObjectEnableBackOff.prefBoolean(OBJECT_ENABLE_BACK_OFF_VALUE)
+	}
+
+	private def restoreObjectEnableBackOff {
+		objectEnableBackOffProperty.set(OBJECT_ENABLE_BACK_OFF_VALUE)
+	}
+
+	private def rereadObjectEnableBackOff {
+		if (this.objectEnableBackOff !== null) {
+			this.objectEnableBackOff.set(defaultObjectEnableBackOff)
+		}
+	}
+
+	private def saveObjectEnableBackOff {
+		if (this.objectEnableBackOff !== null) {
+			writeStore.putBoolean(nameObjectEnableBackOff, this.objectEnableBackOff.get)
+		}
+	}
+
+	def isObjectEnableBackOff : boolean {
+		this.objectEnableBackOffProperty.get
+	}
+
+	def setObjectEnableBackOff(enable : boolean) {
+		this.objectEnableBackOffProperty.set(enable)
+	}
+
+
+
+
+
+	var objectAvoidPhysicalCollision : BooleanProperty
+
+	/** Replies if physical collision is avoided between the road objects.
+	 */
+	def getObjectAvoidPhysicalCollisionProperty : BooleanProperty {
+		if (this.objectAvoidPhysicalCollision === null) {
+			this.objectAvoidPhysicalCollision = new SimpleBooleanProperty(this, OBJECT_AVOID_PHYSICAL_COLLISION,
+				defaultObjectAvoidPhysicalCollision)
+		}
+		return this.objectAvoidPhysicalCollision
+	}
+
+	private def nameObjectAvoidPhysicalCollision : String {
+		name(PREFERENCES_CATEGORY_OBJS, PREFERENCES_GROUP_OBJS_PROPERTIES, OBJECT_AVOID_PHYSICAL_COLLISION)
+	}
+
+	private def defaultObjectAvoidPhysicalCollision : boolean {
+		nameObjectAvoidPhysicalCollision.prefBoolean(OBJECT_AVOID_PHYSICAL_COLLISION_VALUE)
+	}
+
+	private def restoreObjectAvoidPhysicalCollision {
+		objectAvoidPhysicalCollisionProperty.set(OBJECT_AVOID_PHYSICAL_COLLISION_VALUE)
+	}
+
+	private def rereadObjectAvoidPhysicalCollision {
+		if (this.objectAvoidPhysicalCollision !== null) {
+			this.objectAvoidPhysicalCollision.set(defaultObjectAvoidPhysicalCollision)
+		}
+	}
+
+	private def saveObjectAvoidPhysicalCollision {
+		if (this.objectAvoidPhysicalCollision !== null) {
+			writeStore.putBoolean(nameObjectAvoidPhysicalCollision, this.objectAvoidPhysicalCollision.get)
+		}
+	}
+
+	def isObjectAvoidPhysicalCollision : boolean {
+		this.objectAvoidPhysicalCollisionProperty.get
+	}
+
+	def setObjectAvoidPhysicalCollision(avoid : boolean) {
+		this.objectAvoidPhysicalCollisionProperty.set(avoid)
+	}
+
+
+
+
+
+
+	var controlLessOnCarCrash : BooleanProperty
+
+	/** Replies if the control of the car must be lost by the agent when the car is crashed.
+	 */
+	def getControlLessOnCarCrashProperty : BooleanProperty {
+		if (this.controlLessOnCarCrash === null) {
+			this.controlLessOnCarCrash = new SimpleBooleanProperty(this, CONTROL_LESS_ON_CAR_CRASH,
+				defaultControlLessOnCarCrash)
+		}
+		return this.controlLessOnCarCrash
+	}
+
+	private def nameControlLessOnCarCrash : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BODY, CONTROL_LESS_ON_CAR_CRASH)
+	}
+
+	private def defaultControlLessOnCarCrash : boolean {
+		nameControlLessOnCarCrash.prefBoolean(CONTROL_LESS_ON_CAR_CRASH_VALUE)
+	}
+
+	private def restoreControlLessOnCarCrash {
+		controlLessOnCarCrashProperty.set(CONTROL_LESS_ON_CAR_CRASH_VALUE)
+	}
+
+	private def rereadControlLessOnCarCrash {
+		if (this.controlLessOnCarCrash !== null) {
+			this.controlLessOnCarCrash.set(defaultControlLessOnCarCrash)
+		}
+	}
+
+	private def saveControlLessOnCarCrash {
+		if (this.controlLessOnCarCrash !== null) {
+			writeStore.putBoolean(nameControlLessOnCarCrash, this.controlLessOnCarCrash.get)
+		}
+	}
+
+	def isControlLessOnCarCrash : boolean {
+		this.controlLessOnCarCrashProperty.get
+	}
+
+	def setControlLessOnCarCrash(disableControl : boolean) {
+		this.controlLessOnCarCrashProperty.set(disableControl)
+	}
+
+
+
+
+
+
+	var carCrashDuration : DoubleProperty
+
+	/** Replies the duration of a car crash before removing the car (in seconds).
+	 */
+	def getCarCrashDurationProperty : DoubleProperty {
+		if (this.carCrashDuration === null) {
+			this.carCrashDuration = new SimpleDoubleProperty(this, CAR_CRASH_DURATION,
+				defaultCarCrashDuration) {
+				protected override invalidated {
+					var value = get
+					if (value < 0.0) {
+						set(0.0)
+					}
+				}
+			} 
+		}
+		return this.carCrashDuration
+	}
+
+	private def nameCarCrashDuration : String {
+		name(PREFERENCES_CATEGORY_CARS, PREFERENCES_GROUP_CARS_PROPERTIES, CAR_CRASH_DURATION)
+	}
+
+	private def defaultCarCrashDuration : double {
+		nameCarCrashDuration.prefDouble(CAR_CRASH_DURATION_VALUE)
+	}
+
+	private def restoreCarCrashDuration {
+		carCrashDurationProperty.set(CAR_CRASH_DURATION_VALUE)
+	}
+
+	private def rereadCarCrashDuration {
+		if (this.carCrashDuration !== null) {
+			this.carCrashDuration.set(defaultCarCrashDuration)
+		}
+	}
+
+	private def saveCarCrashDuration {
+		if (this.carCrashDuration !== null) {
+			writeStore.putDouble(nameCarCrashDuration, this.carCrashDuration.get)
+		}
+	}
+
+	def getCarCrashDuration : double {
+		this.carCrashDurationProperty.get
+	}
+
+	def setCarCrashDuration(duration : double) {
+		this.carCrashDurationProperty.set(duration)
+	}
+
+
+
+
+
+	var carFollowingModel : ObjectProperty<CarFollowingModel>
+	var carFollowingModelValues : ListProperty<CarFollowingModel>
+
+	/** Replies the type of car following model to be used by default.
+	 */
+	def getCarFollowingModelProperty : ObjectProperty<CarFollowingModel> {
+		if (this.carFollowingModel === null) {
+			this.carFollowingModel = new SimpleObjectProperty(this, CAR_FOLLOWING_MODEL, defaultCarFollowingModel)
+		}
+		return this.carFollowingModel
+	}
+
+	/** Replies the list of possible values to be selected.
+	 */
+	def carFollowingModelAvailableValues : ListProperty<CarFollowingModel> {
+		if (this.carFollowingModelValues === null) {
+			var list = new ImmutableObservableList(CarFollowingModel::values)
+			this.carFollowingModelValues = new SimpleListProperty(list)
+		}
+		return this.carFollowingModelValues
+	}
+
+	private def nameCarFollowingModel : String {
+		name(PREFERENCES_CATEGORY_AGENTS, PREFERENCES_GROUP_AGENTS_BEHAVIOR, CAR_FOLLOWING_MODEL)
+	}
+
+	private def defaultCarFollowingModel : CarFollowingModel {
+		nameCarFollowingModel.prefEnum(typeof(CarFollowingModel), CAR_FOLLOWING_MODEL_VALUE)
+	}
+
+	private def restoreCarFollowingModel {
+		carFollowingModelProperty.set(CAR_FOLLOWING_MODEL_VALUE)
+	}
+
+	private def rereadCarFollowingModel {
+		if (this.carFollowingModel !== null) {
+			this.carFollowingModel.set(defaultCarFollowingModel)
+		}
+	}
+
+	private def saveCarFollowingModel {
+		if (this.carFollowingModel !== null) {
+			writeStore.put(nameCarFollowingModel, EnumJsonTypeAdapter::getJsonValue(this.carFollowingModel.get))
+		}
+	}
+
+	def getCarFollowingModel : CarFollowingModel {
+		this.carFollowingModelProperty.get
+	}
+
+	def setCarFollowingModel(model : CarFollowingModel) {
+		this.carFollowingModelProperty.set(model)
+	}
+
+}

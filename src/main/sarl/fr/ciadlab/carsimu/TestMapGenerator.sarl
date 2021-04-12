@@ -1,0 +1,111 @@
+/*
+ * $Id$
+ *
+ * SARL is an general-purpose agent programming language.
+ * More details on http://www.sarl.io
+ *
+ * Copyright (C) 2014-2021 the original authors or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package fr.ciadlab.carsimu
+
+import java.io.File
+import java.util.Random
+import org.arakhne.afc.gis.io.shape.GISShapeFileWriter
+import org.arakhne.afc.gis.road.RoadPolyline
+import org.arakhne.afc.gis.road.primitive.RoadType
+import org.arakhne.afc.gis.road.primitive.TrafficDirection
+import org.arakhne.afc.io.dbase.DBaseFileWriter
+import org.arakhne.afc.io.shape.ESRIBounds
+import org.arakhne.afc.io.shape.ShapeElementType
+import org.arakhne.afc.io.shape.ShapeFileIndexWriter
+import org.arakhne.afc.math.geometry.d2.d.Rectangle2d
+import org.arakhne.afc.vmutil.FileSystem
+
+/** Generator of test map.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+@SuppressWarnings("all")
+class TestMapGenerator {
+
+	static val RANDOM = new Random
+
+	static def createRoad(i : int, lines : double[]) : RoadPolyline {
+		var rline = new RoadPolyline
+		val onSegmentDirection = true //RANDOM.nextBoolean
+		if (onSegmentDirection) {
+			rline.addPoint(lines.get(i), lines.get(i + 1))
+			rline.addPoint(lines.get(i + 2), lines.get(i + 3))
+			rline.trafficDirection = TrafficDirection::ONE_WAY
+		} else {
+			rline.addPoint(lines.get(i + 2), lines.get(i + 3))
+			rline.addPoint(lines.get(i), lines.get(i + 1))
+			rline.trafficDirection = TrafficDirection::NO_ENTRY
+		}
+		rline.roadType = RoadType::FREEWAY
+		return rline
+	}
+	
+	@SuppressWarnings("discouraged_reference")
+	static def main(args : String*) {
+		var line1 : double[] = #[
+			938620, 2302823,
+			941620, 2302950,
+			943620, 2302950,
+			948620, 2302850
+		]
+
+		var lines = <RoadPolyline>newArrayList
+
+		for (var i = 0; (i+3) < line1.length; i = i + 2) {
+			var rline1 = createRoad(i, line1)
+			lines += rline1
+		}
+
+		var bounds : Rectangle2d = null
+		for (line : lines) {
+			if (bounds === null) {
+				bounds = line.boundingBox
+			} else {
+				bounds= bounds.createUnion(line.boundingBox)
+			}
+		}
+		System.out.println(bounds)
+		
+		val currentFolder = new File(FileSystem::CURRENT_DIRECTORY).absoluteFile
+		System.out.println("Current folder: " + currentFolder.absolutePath)
+		
+		var shpFile = new File(currentFolder, "data/shp/test.shp")
+		var dbfFile = new File(currentFolder, "data/shp/test.dbf")
+		var shxFile = new File(currentFolder, "data/shp/test.shx")
+
+		var dbfWriter = new DBaseFileWriter(dbfFile)
+		
+		var esriBounds = new ESRIBounds(bounds.minX, bounds.maxX, bounds.minY, bounds.maxY)
+		var shxWriter = new ShapeFileIndexWriter(shxFile, ShapeElementType::POLYLINE, esriBounds)
+
+		var shpWriter = new GISShapeFileWriter(
+			shpFile, ShapeElementType::POLYLINE, bounds,
+			dbfWriter, shxWriter)
+		shpWriter.write(lines)
+		shpWriter.close
+		System.out.println("done")
+	}
+
+}

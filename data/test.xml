@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scenario name="test 1">
+	<roadNetwork file="./shp/map-line2.shp"/>
+	<!--
+	<roadObjects>
+		<group name="a group">
+			<roadObject x="938716" y="2302828" type="fr.ciadlab.carsimu.environment.SpeedLimitPanel" />
+		</group>
+	</roadObjects>
+	-->
+	<spawners>
+		<spawner x="938620" y="2302822" agent="fr.ciadlab.carsimu.agents.StandardCarDriver" budget="1">
+			<law name="constant">
+				<value>2700</value>
+			</law>
+			<bodyParameters>
+				<minSpeed>25</minSpeed>
+				<maxSpeed>36</maxSpeed>
+				<initialLaneLaw name="constant">
+					<value>0</value>
+				</initialLaneLaw>
+			</bodyParameters>
+			<agentParameters>
+				<double comment="x position of the target">947029</double>
+				<double comment="y position of the target">2303498</double>
+				<double comment="distance to the target for reaching (m)">50</double>
+			</agentParameters>
+		</spawner>
+	</spawners>
+	<preferences>
+		<controlLessOnCarCrash>true</controlLessOnCarCrash>
+	</preferences>
+</scenario>

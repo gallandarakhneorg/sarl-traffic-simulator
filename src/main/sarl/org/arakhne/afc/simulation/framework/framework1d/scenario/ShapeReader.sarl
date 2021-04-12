@@ -1,0 +1,153 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.scenario
+
+import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
+import java.net.URI
+import java.net.URL
+import org.arakhne.afc.attrs.collection.AttributeCollection
+import org.arakhne.afc.gis.io.shape.GISShapeFileReader
+import org.arakhne.afc.gis.mapelement.MapElement
+import org.arakhne.afc.gis.maplayer.MapElementLayer
+import org.arakhne.afc.gis.maplayer.TreeMapElementLayer
+import org.arakhne.afc.gis.road.RoadPolyline
+import org.arakhne.afc.gis.road.StandardRoadNetwork
+import org.arakhne.afc.gis.road.layer.RoadNetworkLayer
+import org.arakhne.afc.gis.road.primitive.RoadType
+import org.arakhne.afc.io.dbase.DBaseFileFilter
+import org.arakhne.afc.math.geometry.d2.d.Rectangle2d
+import org.arakhne.afc.vmutil.FileSystem
+
+/**
+ * Reader of Shape file.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class ShapeReader {
+
+	/** Read a ESRI Shape file.
+	 * 
+	 * @param file the file to read.
+	 * @return the map layer.
+	 */
+	def loadRoads(file : File) : RoadNetworkLayer {
+		assert file !== null
+		loadShapeFile(file, true, RoadType::FREEWAY) as RoadNetworkLayer
+	}
+
+	/** Create the shape file reader.
+	 *
+	 * @return the reader.
+	 */
+	protected def createShapeFileReader(stream : FileInputStream, dbfUrl : URL) : GISShapeFileReader {
+		return new FixedGISShapeFileReader(stream, dbfUrl)
+	}
+
+	private static class FixedGISShapeFileReader extends GISShapeFileReader {
+
+		new (stream : FileInputStream, dbfUrl : URL) throws IOException {
+			super(stream, null, dbfUrl)
+		}
+
+		protected override createAttributeCollection(elementIndex : int) : AttributeCollection {
+			// TODO: in the case of DBase oriented collection, the index should start at index 0, not at index 1
+			return super.createAttributeCollection(elementIndex - 1)
+		}
+
+	}
+
+	/** Read a ESRI Shape file.
+	 *
+	 * @param file the file to read.
+	 * @param isRoad indicates if the file contains roads.
+	 * @param roadType is the type of the roads (override the DBF attribute).
+	 * @return the map layer.
+	 */
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	def loadShapeFile(file : File, isRoad : boolean = false, roadType : RoadType = null) : MapElementLayer<?> {
+			var network : StandardRoadNetwork
+			var layer : MapElementLayer<MapElement>
+
+			var dbfFile = FileSystem::replaceExtension(file, DBaseFileFilter::EXTENSION_DBASE_FILE)
+			var dbfUrl = if (dbfFile.canRead) dbfFile as URI as URL else null
+
+			var is = new FileInputStream(file)
+			try {
+				assert is !== null
+				var reader = createShapeFileReader(is, dbfUrl)
+				try {
+					val worldRect = new Rectangle2d
+					val esriBounds = reader.getBoundsFromHeader
+					worldRect.setFromCorners(
+							esriBounds.minX,
+							esriBounds.minY,
+							esriBounds.maxX,
+							esriBounds.maxY)
+
+					if (isRoad) {
+						reader.mapElementType = typeof(RoadPolyline)
+					}
+
+					var element : MapElement
+
+					if (isRoad) {
+						while ((element = reader.read) !== null) {
+							if (element instanceof RoadPolyline) {
+								if (roadType !== null) {
+									element.roadType = roadType
+								}
+								if (network === null) {
+									network = new StandardRoadNetwork(worldRect)
+								}
+								network.addRoadSegment(element);
+							} else {
+								if (layer === null) {
+									layer = new TreeMapElementLayer(worldRect)
+								}
+								layer.addMapElement(element)
+							}
+						}
+					} else {
+						while ((element = reader.read) !== null) {
+							if (layer === null) {
+								layer = new TreeMapElementLayer(worldRect)
+							}
+							layer.addMapElement(element)
+						}
+					}
+				} finally {
+					reader.close
+				}
+			} finally {
+				is.close
+			}
+			if (network !== null) {
+				val networkLayer = new RoadNetworkLayer(network)
+				return networkLayer
+			}
+			return layer
+	}
+
+}

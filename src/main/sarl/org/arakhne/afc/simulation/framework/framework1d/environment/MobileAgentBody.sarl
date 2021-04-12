@@ -1,0 +1,128 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.environment
+
+import java.util.List
+import org.arakhne.afc.gis.road.primitive.RoadSegmentContainer
+import org.arakhne.afc.simulation.framework.base.environment.AgentBody
+import org.arakhne.afc.simulation.framework.base.events.Influence
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+import org.eclipse.xtend.lib.annotations.Accessors
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+
+/**
+ * Mobile body for agents.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class MobileAgentBody extends MobileRoadObject implements AgentBody {
+
+	@Accessors(PUBLIC_SETTER)
+	var forwardPerceptionDistance : double = Double::NEGATIVE_INFINITY
+
+	@Accessors
+	var perceivedRoads : RoadSegmentContainer
+
+	@Accessors(PUBLIC_SETTER)
+	var perceivedObjects : List<PerceptionUnit1d<RoadObject>>
+
+	var influence : Influence
+
+	@Accessors(PUBLIC_GETTER)
+	var controlLost = false
+
+	@Accessors
+	var spawningTime : double = Double::NaN
+
+	@Accessors
+	var destroyingTime : double = Double::NaN
+
+	var crashDuration : Double
+
+	def getForwardPerceptionDistance : double {
+		if (this.forwardPerceptionDistance < 0.0) {
+			this.forwardPerceptionDistance = typeof(PreferenceManager1d).singleton.agentPerceptionDistance
+		}
+		return this.forwardPerceptionDistance
+	}
+
+	def getPerceivedObjects : List<PerceptionUnit1d<RoadObject>> {
+		this.perceivedObjects ?: emptyList
+	}
+
+	/** Register the influence to apply to this mobile object.
+	 * If the agent has not lost the body control, the influence will be considered.
+	 * Otherwise, the influence is ignored.
+	 *
+	 * @param influence the influence.
+	 * @see #markFrontCrask()
+	 * @see #markBackCrash()
+	 * @see PreferenceManager1d#isControlLessOnCarCrash()
+	 */
+	def setInfluence(influence : Influence) {
+		if (!this.controlLost) {
+			this.influence = influence
+		} else {
+			// Ignore the influence
+		}
+	}
+
+	/** Replies the registered influence to apply to this mobile object.
+	 * 
+	 * @return the influence or {@code null} if none.
+	 * @see #markFrontCrask()
+	 * @see #markBackCrash()
+	 * @see PreferenceManager1d#isControlLessOnCarCrash()
+	 */
+	def consumeInfluence : Influence {
+		if (this.controlLost) {
+			return null
+		}
+		val inf = this.influence
+		this.influence = null
+		return inf
+	}
+	
+	override markFrontCrash(relativeSpeed : double, time : TimeManager) {
+		if (typeof(PreferenceManager1d).singleton.controlLessOnCarCrash) {
+			this.controlLost = true
+		}
+		super.markFrontCrash(relativeSpeed, time)
+		if (this.controlLost && this.crashDuration === null) {
+			this.crashDuration = typeof(PreferenceManager1d).singleton.carCrashDuration
+		}
+	}
+
+	override markBackCrash(relativeSpeed : double, time : TimeManager) {
+		if (typeof(PreferenceManager1d).singleton.controlLessOnCarCrash) {
+			this.controlLost = true
+		}
+		super.markBackCrash(relativeSpeed, time)
+		if (this.controlLost && this.crashDuration === null) {
+			this.crashDuration = typeof(PreferenceManager1d).singleton.carCrashDuration
+		}
+	}
+
+}

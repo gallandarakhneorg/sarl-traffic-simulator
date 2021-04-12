@@ -1,0 +1,142 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.agents.acceleration
+
+/** 
+ * {@link https://en.wikipedia.org/wiki/Intelligent_driver_model Intelligent Driver Model}.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ * @see "https://github.com/eishub/TrafficSim/blob/master/src/main/java/microModel/core/driver/model/IDM.java"
+ */
+final class IdmModel {
+
+	/** IDM stopping distance [m] (Minimum bumper-to-bumper distance to the front vehicle after coming to a full stop). */
+	public static val S0 = 3.0
+
+	/** Acceleration exponent used in calculating the acceleration in each round. */
+	public static val DELTA = 4.0
+
+	/** Desired safe time Headway [s].*/
+	public static val SAFE_TIME = 1.2
+
+	/** IDM maximal acceleration [m/s^2]. */
+	public static val A = 1.25
+	
+	/** IDM comfortable deceleration [m/s^2]. */
+	public static val B = 2.09
+
+	/** Speed limit adherence factor. */
+	public static val F_SPEED = 1.0
+
+	/** Compute the acceleration according to the IDM model.
+	 *
+	 * @param s0 IDM stopping distance [m] (Minimum bumper-to-bumper distance to the front vehicle after coming to a full stop).
+	 * @param v0 the desired velocity [m/s].
+	 * @param v the current velocity of the vehicle [m/s]. 
+	 * @param delta the acceleration exponent used in calculating the acceleration in each round. See {@link #DELTA}.
+	 * @param t Desired safe time Headway [s]. See {@link #SAFE_TIME}.
+	 * @param deltaV difference between the vehicle speed and the speed of the blocking object.
+	 * @param s distance to the blocking object.
+	 * @param a maximal acceleration [m/s^2]. See {@link #A}.
+	 * @param b comfortable deceleration [m/s^2]. See {@link #B}.
+	 * @return the acceleration.
+	 */
+	@Pure
+	static def acceleration(s0 : double, v0 : double, v : double, delta : double, t : double, deltaV : double, s : double,
+			a : double, b : double) : double {
+		var term0 = standardDesiredAcceleration(a, v, v0, delta)
+		var term1 = desiredDynamicDistance(s0, v, t, deltaV, a, b) / s
+		var term2 = a * term1 * term1
+		return term0 - term2
+	}
+
+	/** Compute the acceleration according to the IDM+ model.
+	 *
+	 * @param s0 IDM stopping distance [m] (Minimum bumper-to-bumper distance to the front vehicle after coming to a full stop).
+	 * @param v0 the desired velocity [m/s].
+	 * @param v the current velocity of the vehicle [m/s]. 
+	 * @param delta the acceleration exponent used in calculating the acceleration in each round. See {@link #DELTA}.
+	 * @param t Desired safe time Headway [s]. See {@link #SAFE_TIME}.
+	 * @param deltaV difference between the vehicle speed and the speed of the blocking object.
+	 * @param s distance to the blocking object.
+	 * @param a maximal acceleration [m/s^2]. See {@link #A}.
+	 * @param b comfortable deceleration [m/s^2]. See {@link #B}.
+	 * @return the acceleration.
+	 */
+	@Pure
+	static def accelerationPlus(s0 : double, v0 : double, v : double, delta : double, t : double, deltaV : double, s : double,
+			a : double, b : double) : double {
+		var term0 = plusDesiredAcceleration(v, v0, delta)
+		var term1 = desiredDynamicDistance(s0, v, t, deltaV, a, b) / s
+		var term2 = term1 * term1
+		return a * Math::min(term0,  1.0 - term2)
+	}
+
+	/** Compute the "desired acceleration" term of thE IDM equation.
+	 *
+	 * @param a maximal acceleration [m/s^2]. See {@link #A}.
+	 * @param v the current velocity of the vehicle [m/s]. 
+	 * @param v0 the desired velocity [m/s].
+	 * @param delta the acceleration exponent used in calculating the acceleration in each round. See {@link #DELTA}.
+	 * @return the desired acceleration.
+	 */
+	@Pure
+	static def standardDesiredAcceleration(a : double, v : double, v0 : double, delta : double) : double {
+		a * (1.0 - ((v / v0) ** delta))
+	}
+
+	/** Compute the "desired acceleration" term of thE IDM+ equation.
+	 * 
+	 * @param v the current velocity of the vehicle [m/s]. 
+	 * @param v0 the desired velocity [m/s].
+	 * @param delta the acceleration exponent used in calculating the acceleration in each round. See {@link #DELTA}.
+	 * @return the desired acceleration.
+	 */
+	@Pure
+	static def plusDesiredAcceleration(v : double, v0 : double, delta : double) : double {
+		1.0 - ((v / v0) ** delta)
+	}
+
+	private static def desiredDynamicDistance(s0 : double, v : double, t : double, deltaV : double, a : double,
+		b : double) : double {
+		var denum = 2.0 * Math::sqrt(a * b)
+		var num = v * deltaV
+		var term2 = v * t + num / denum
+		return s0 + Math::max(0.0, term2)
+	}
+
+	/** Compute the standard desired velocity for a vehicle.
+	 * @param maxSpeed the maximum speed of the vehicle [m/s].
+	 * @param speedLimit the speed limit for the current road [m/s].
+	 * @param speedLimitAdherenceFactor the adherence factor on the road. See {@link #F_SPEED}.
+	 */
+	@Pure
+	static def desiredVelocity(maxSpeed : double, speedLimit : double, speedLimitAdherenceFactor : double) : double {
+		Math::min(maxSpeed, speedLimitAdherenceFactor * speedLimit)
+	}
+
+	private new {
+	}
+
+}
+

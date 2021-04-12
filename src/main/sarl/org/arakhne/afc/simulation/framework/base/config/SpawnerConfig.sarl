@@ -1,0 +1,75 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.config
+
+import io.sarl.lang.core.Agent
+import java.util.Map
+import org.arakhne.afc.simulation.framework.base.environment.AgentBody
+import org.arakhne.afc.vmutil.json.JsonBuffer
+import org.eclipse.xtend.lib.annotations.Accessors
+import java.util.List
+
+/**
+ * Configuration for creating a spawner of agents.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class SpawnerConfig extends AbstractPositionConfig {
+
+	@Accessors
+	var law : String
+
+	@Accessors
+	val lawArguments : Map<String, String> = newHashMap
+
+	@Accessors
+	val bodyParameters : Map<String, Object> = newHashMap
+
+	@Accessors
+	var agentType : Class<? extends Agent>
+
+	@Accessors
+	var bodyType : Class<? extends AgentBody>
+
+	@Accessors(PUBLIC_SETTER)
+	var budget : int = Integer::MAX_VALUE
+
+	@Accessors(PUBLIC_GETTER)
+	var agentParameters : List<Object> = newArrayList
+
+	def getBudget : int {
+		if (this.budget < 0) Integer::MAX_VALUE else this.budget
+	}
+
+	def toJson(buffer : JsonBuffer) : void {
+		super.toJson(buffer)
+		buffer.add("law", getLaw)
+		buffer.add("lawArguments", getLawArguments)
+		buffer.add("agent", getAgentType)
+		buffer.add("body", getBodyType)
+		buffer.add("budget", getBudget)
+		buffer.add("bodyParameters", getBodyParameters)
+		buffer.add("agentParameters", getAgentParameters)
+	}
+
+}

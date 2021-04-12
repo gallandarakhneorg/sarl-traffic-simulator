@@ -1,0 +1,118 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.environment
+
+import org.arakhne.afc.gis.road.primitive.RoadType
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+
+/**
+ * The speed limits on roads.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+final class RoadSpeedLimit {
+
+	/** Replies the default speed limit for the given type of road.
+	 *
+	 * @param roadType the type of road.
+	 * @return the speed limit in km/h
+	 */
+	static def getDefaultSpeedLimitFor(roadType : RoadType) : int {
+		var rt = roadType
+		if (rt === null) {
+			rt = RoadType::LOCAL_ROAD
+		}
+		switch (rt) {
+		case INTERCHANGE_RAMP: {
+			return typeof(PreferenceManager1d).singleton.speedLimitInterchangeRamp
+		}
+		case FREEWAY: {
+			return typeof(PreferenceManager1d).singleton.speedLimitFreeway
+		}
+		case MAJOR_ROAD: {
+			return typeof(PreferenceManager1d).singleton.speedLimitMajorRoad
+		}
+		case SECONDARY_ROAD: {
+			return typeof(PreferenceManager1d).singleton.speedLimitSecondaryRoad
+		}
+		case LOCAL_ROAD: {
+			return typeof(PreferenceManager1d).singleton.speedLimitLocalRoad
+		}
+		case MAJOR_URBAN_AXIS: {
+			return typeof(PreferenceManager1d).singleton.speedLimitMajorUrbanAxis
+		}
+		case PRIVACY_PATH: {
+			return typeof(PreferenceManager1d).singleton.speedLimitPrivacyPath
+		}
+		case TRACK: {
+			return typeof(PreferenceManager1d).singleton.speedLimitTrack
+		}
+		case BIKEWAY: {
+			return typeof(PreferenceManager1d).singleton.speedLimitBikeway
+		}
+		case OTHER: {
+			return typeof(PreferenceManager1d).singleton.speedLimitOther
+		}
+		}
+		throw new IllegalArgumentException
+	}
+
+	/** Adjust the speed limit in order to be a multiple of 10.
+	 *
+	 * @param speed the speed to adjust.
+	 * @return the adjusted speed.
+	 */
+	static def adjustSpeedLimit(speed : int) : int {
+		if (speed > 0) {
+			val dd = speed % 10
+			var deca = if (dd === 0) speed else (dd + 1) * 10
+			if (deca > 200) {
+				deca = 200
+			}
+			return deca
+		}
+		return 0
+	}
+
+	/** Adjust the speed limit in order to be equal to one of the legal/know speed limits.
+	 * 
+	 * @param speed the speed to adjust in km/h.
+	 * @return the normalized speed in km/h.
+	 */
+	static def normalizeSpeedLimit(speed : int) : int {
+		var selectedSpeed = speed
+		var min = Double::POSITIVE_INFINITY
+		for (roadType : RoadType::values) {
+			val legalSpeed = roadType.getDefaultSpeedLimitFor
+			val delta = speed - legalSpeed
+			if (delta >= 0 && delta < min) {
+				min = delta
+				selectedSpeed = legalSpeed as int
+			}
+		}
+		return selectedSpeed
+	}
+
+}

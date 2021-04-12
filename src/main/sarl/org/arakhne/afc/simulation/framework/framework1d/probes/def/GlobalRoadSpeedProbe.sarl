@@ -1,0 +1,119 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.probes.^def
+
+import com.opencsv.CSVWriter
+import java.io.File
+import java.util.List
+import org.arakhne.afc.gis.location.GeoId
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.simulation.framework.base.environment.AgentBody
+import org.arakhne.afc.simulation.framework.base.fx.probes.AbstractCsvFxEnvironmentProbe
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+import org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d
+import org.arakhne.afc.simulation.framework.framework1d.probes.StatAccumulator
+
+import static extension org.arakhne.afc.simulation.framework.framework1d.probes.^def.ProbeUtils.*
+
+/**
+ * A probe for measuring the average
+ * {@link https://en.wikipedia.org/wiki/Traffic_flow#Speed speed of cars} on a road.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class GlobalRoadSpeedProbe extends AbstractCsvFxEnvironmentProbe<EnvironmentModel1d> {
+
+	/** Replies if the given road should be considered for the probed value computation.
+	 */
+	protected def getRoadFilter : (RoadSegment)=>boolean {
+		null
+	}
+
+	@SuppressWarnings("potential_inefficient_value_conversion")
+	override probe(environment : EnvironmentModel1d, removedBodies : List<? extends AgentBody>, time : TimeManager,
+		rootFolder : File, output : CSVWriter) {
+		var data = <GeoId, Pair<StatAccumulator, StatAccumulator>>newTreeMap(null)
+		var globalAcc = new StatAccumulator
+		environment.forEachRoadWithAgent(roadFilter) [body, road|
+			var key = road.geoId
+			var pair = data.get(key)
+			if (pair === null) {
+				var speedAcc = new StatAccumulator
+				var accelAcc = new StatAccumulator
+				pair = Pair::of(speedAcc, accelAcc)
+				data.put(key, pair)
+			}
+			var speed = body.linearSpeed
+			var acceleration = body.linearAcceleration
+			pair.key.increment(speed)
+			pair.value.increment(acceleration)
+			globalAcc.increment(speed)
+		]
+		
+		var t = time.current
+
+		for (entry : data.entrySet) {
+			var pr = entry.value
+			var nbBodies = pr.value.count
+			var speedAcc = pr.key
+			var accelAcc = pr.value
+			if (nbBodies > 0) {
+				output.writeNext(#[
+					t as String,
+					entry.key.toGeoIdString,
+					nbBodies as String,
+					speedAcc.average as String,
+					speedAcc.stdDev as String,
+					speedAcc.min as String,
+					speedAcc.max as String,
+					accelAcc.average as String,
+					accelAcc.stdDev as String,
+					accelAcc.min as String,
+					accelAcc.max as String
+				])
+				output.flushQuietly
+			}
+		}
+
+		if (this.configuration.isChartsEnabled) {
+			addToSeries(time.current, globalAcc.average)
+		}
+	}
+	
+	def getCsvHeader : String[] {
+		#[
+			"t",
+			"Segment Id",
+			"Nb bodies (#)",
+			"Avg speed (m/s)",
+			"Std dev speed (m/s)",
+			"Min speed (m/s)",
+			"Max speed (m/s)",
+			"Avg acceleration (m/s**2)",
+			"Std dev acceleration (m/s**2)",
+			"Min acceleration (m/s**2)",
+			"Max acceleration (m/s**2)"
+		]
+	}
+
+}

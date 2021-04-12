@@ -1,0 +1,1208 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.environment
+
+import io.sarl.lang.util.OutParameter
+import java.io.FileOutputStream
+import java.io.PrintStream
+import java.lang.ref.WeakReference
+import java.util.Collection
+import java.util.Collections
+import java.util.Comparator
+import java.util.HashMap
+import java.util.Iterator
+import java.util.List
+import java.util.Map
+import java.util.Set
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.function.BiConsumer
+import org.arakhne.afc.gis.primitive.GISPrimitive
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.gis.road.primitive.RoadConnection
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.math.DoubleRange
+import org.arakhne.afc.math.MathUtil
+import org.arakhne.afc.math.geometry.d1.Direction1D
+import org.arakhne.afc.math.geometry.d1.Point1D
+import org.arakhne.afc.math.geometry.d1.Transform1D
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.math.geometry.d1.d.Vector1d
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+import org.arakhne.afc.simulation.framework.framework1d.util.RoadTools
+import org.arakhne.afc.util.ListUtil
+import org.eclipse.xtend.lib.annotations.Accessors
+import org.eclipse.xtend.lib.annotations.ToString
+
+import static extension org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d.*
+import static extension org.arakhne.afc.simulation.framework.framework1d.util.RoadTools.*
+
+/** 
+ * Tool for applying the influences after detect the collisions.
+ *
+ * <p>Let each segment on a vehicle's path mark as:<ul>
+ * <li>{@code F} if the segment has the start and destination points of a move</li>
+ * <li>{@code D} if the segment has only the destination point of a move</li>
+ * <li>{@code S} if the segment has only the start point of a move</li>
+ * <li>{@code I} if the segment has neither the start nor the destination point of the move, but the vehicle has to move on it</li>
+ * <li></li>
+ * </ul>
+ *
+ * <p>A is after B on the lane. Position on the segment of A (resp. B) before and after the move are {@code a} (resp. {@code b})
+ * and {@code a'} (resp. {@code b'}). Consequently, {@code b <= a}.
+ * The collision detection table is defined as ({@code w} is the width of A): 
+ * <table border="1">
+ * <thead>
+ * <tr><th>Vehicle A (Leader)</th><th>Vehicle B (Follower)</th><th>Comment</th><th>Collision if</th><th>Position of B if collision</th></tr>
+ * </thead>
+ * <tbody>
+ * <tr style="color:orange;"><td rowspan=4>F</td><td>F</td><td></td><td>{@code b' >= a'}</td><td>{@code b' = a' - w}</td></tr>
+ * <tr style="color:orange;"><td>D</td><td>{@code b = 0}</td><td>{@code b' >= a'}</td><td>{@code b' = a' - w}</td></tr>
+ * <tr style="color:red;"><td>S</td><td></td><td>always</td><td>{@code b' = a' - w}</td></tr>
+ * <tr style="color:red;"><td>I</td><td></td><td>always</td><td>{@code b' = a' - w}</td></tr>
+ * 
+ * <tr style="color:orange;"><td rowspan=6>D</td><td>F</td><td>{@code b = 0}</td><td>{@code a' >= b'}</td><td>{@code a' = 0} and {@code b' = a' + w}</td></tr>
+ * <tr style="color:green;"><td rowspan=2>D</td><td>B before A at origin</td><td>never</td><td></td></tr>
+ * <tr style="color:darkgray"><td>A before B at origin</td><td>always</td><td>solved within the origin segment</td></tr>
+ * <tr style="color:green;"><td>S</td><td>{@code b = 0}</td><td>never</td><td></td></tr>
+ * <tr style="color:darkgray"><td rowspan=2>I</td><td>B before A at origin</td><td>always</td><td>solved within the origin segment</td></tr>
+ * <tr style="color:green"><td>A before B at origin</td><td>never</td><td></td></tr>
+ * 
+ * <tr style="color:green;"><td rowspan=6>S</td><td>F</td><td></td><td>never</td><td></td></tr>
+ * <tr style="color:green;"><td>D</td><td></td><td>never</td><td></td></tr>
+ * <tr style="color:green;"><td rowspan=2>S</td><td>B before A at destination</td><td>never</td><td></td></tr>
+ * <tr style="color:red;"><td>A before B at destination</td><td>always</td><td>{@code a' = a} and {@code b' = a' - w}</td></tr>
+ * <tr style="color:green;"><td rowspan=2>I</td><td>B before A at destination</td><td>never</td><td></td></tr>
+ * <tr style="color:red;"><td>A before B at destination</td><td>always</td><td>{@code a' = a} and {@code b' = a' - w}</td></tr>
+ * 
+ * <tr style="color:red;"><td rowspan=5>I</td><td>F</td><td>{@code b = 0}</td><td>always</td><td>{@code b' = 0} and {@code a'} on previous segment</td></tr>
+ * <tr style="color:darkgray"><td>D</td><td>{@code b = 0}</td><td></td><td>solved within start segment</td></tr>
+ * <tr style="color:red"><td rowspan=2>S</td><td>{@code b = 0}, B before A at destination</td><td>always</td><td>{@code b' = b'} and {@code a' on the previous segment}</td></tr>
+ * <tr style="color:green"><td>{@code b = 0}, A before B at destination</td><td>never</td><td></td></tr>
+ * <tr style="color:darkgray"><td>I</td><td>solved within start or destination segments</td><td></td><td></td></tr>
+ * </tbody>
+ * </table>
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class CollisionDetectorInfluenceApplier1d extends AbstractInfluenceApplier1d {
+
+	/** Minimal distance between tow crashed vehicles after the crash is detected.
+	 * This value is expressed in meters.
+	 */
+	static val DISTANCE_AFTER_CRASH = 0.01
+
+	static val SEGMENT_COMPARATOR : Comparator<RoadSegment> = [ a, b |
+		return a.UUID <=> b.UUID
+	]
+
+	static val NEW_STATE_COMPARATOR : Comparator<ActionCandidate> = [ a, b |
+		val ra = a.positionRange
+		assert ra !== null
+		val rb = b.positionRange
+		assert rb !== null
+		return ra <=> rb
+	]
+
+	var buffer = <RoadSegment, Map<MobileAgentBody, Transform1D<RoadSegment>>>newTreeMap(SEGMENT_COMPARATOR)
+
+	var sbuilder : ActionSpaceBuilder
+
+	var cdetector : CollisionDetector
+
+	var aapplier : EnvironmentUpdater
+
+	protected final def getActionSpaceBuilder : ActionSpaceBuilder {
+		if (this.sbuilder === null) {
+			this.sbuilder = createActionSpaceBuilder
+		}
+		return this.sbuilder
+	}
+
+	protected def createActionSpaceBuilder : ActionSpaceBuilder {
+		new ActionSpaceBuilder
+	}
+
+	protected final def getCollisionDetector : CollisionDetector {
+		if (this.cdetector === null) {
+			this.cdetector = createCollisionDetector
+		}
+		return this.cdetector
+	}
+
+	protected def createCollisionDetector : CollisionDetector {
+		new CollisionDetector
+	}
+
+	protected final def getEnvironmentUpdater : EnvironmentUpdater {
+		if (this.aapplier === null) {
+			this.aapplier = createEnvironmentUpdater
+		}
+		return this.aapplier
+	}
+
+	protected def createEnvironmentUpdater : EnvironmentUpdater {
+		new EnvironmentUpdater
+	}
+	
+	def reset {
+		this.buffer = newTreeMap(SEGMENT_COMPARATOR)
+	}
+
+	def prepareRemoval(body : MobileAgentBody) {
+		var segment = body.position.segment as RoadSegment
+		segment.removeMobileObject(body)
+	}
+
+	def applyMotionInfluence(transform : Transform1D<RoadSegment>, body : MobileAgentBody,
+				timeManager : TimeManager) {
+		assert transform !== null
+
+		var segment = body.position.segment as RoadSegment
+		val map = this.buffer.computeIfAbsent(segment) [
+			val cmp : Comparator<GISPrimitive> = [a, b| a.UUID <=> b.UUID]
+			return <MobileAgentBody, Transform1D<RoadSegment>>newTreeMap(cmp)
+		]
+		map.put(body, transform)
+	}
+
+	def done(timeManager : TimeManager) : int {
+		var roads = actionSpaceBuilder.buildFutureState(this.buffer, this.agentBodies, timeManager)
+		// **** DEBUG: 
+		//ActionSpaceBuilder::generateCsv(roads, "/home/sgalland/test.csv")
+		//
+		collisionDetector.collisionDetection(roads, timeManager)
+		//
+		var nbChanges = environmentUpdater.applyEnvironmentActions(roads, timeManager)
+		//
+		this.buffer = null
+		return nbChanges
+	}
+
+	/** 
+	 * Candidate for an action into the environment.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	@ToString
+	protected static abstract class ActionCandidate {
+
+		val body : MobileAgentBody
+
+		val segmentDirection : boolean
+
+		protected val roadPath : List<? extends RoadSegment>
+
+		var demiWidth : Double
+
+		@Accessors
+		var cancel : boolean
+
+		new (body : MobileAgentBody, segmentDirection : boolean, roadPath : List<? extends RoadSegment>) {
+			assert body !== null
+			assert roadPath !== null
+			this.body = body
+			this.roadPath = roadPath
+			this.segmentDirection = segmentDirection
+		}
+
+		def getBody : MobileAgentBody {
+			this.body
+		}
+
+		def getDemiWidth : double {
+			if (this.demiWidth === null) {
+				this.demiWidth = getBody.bounds.width / 2.0
+			}
+			return this.demiWidth.doubleValue
+		}
+	
+		def cancelChain {
+			var n = this
+			do {
+				n.cancel = true
+				n = n.nextCandidate
+			} while (n !== null);
+		}
+
+		abstract def getRoadSegment : RoadSegment
+
+		abstract def getRoadEntry : RoadConnection
+		
+		def isSegmentDirection : boolean {
+			this.segmentDirection
+		}
+
+		abstract def isCrashed : boolean
+		
+		abstract def setCrashed(crashed : boolean)
+
+		abstract def getPositionRange : PositionRange
+
+		abstract def getPreviousCandidate : ActionCandidate
+
+		abstract def getNextCandidate : ActionCandidate
+
+		abstract def getEndCandidate : AbstractAgentMoveCandidate
+
+		def setPreviousCandidate(previous : ActionCandidate) {
+			throw new UnsupportedOperationException
+		}
+
+		def setNextCandidate(next : ActionCandidate) {
+			throw new UnsupportedOperationException
+		}
+
+		abstract def moveBackwardTo(range : PositionRange)
+
+	}
+
+	/** 
+	 * Description of the start position for a motion of an agent body into the environment.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class MoveStartCandidate extends ActionCandidate {
+
+		val reference : WeakReference<CollisionDetectorInfluenceApplier1d.AbstractAgentMoveCandidate>
+
+		val segment : WeakReference<RoadSegment>
+
+		val roadEntry : WeakReference<RoadConnection>
+
+		var next : WeakReference<ActionCandidate>
+
+		var range : PositionRange
+
+		new (reference : AbstractAgentMoveCandidate, segment : RoadSegment,
+			segmentDirection : boolean) {
+			super(reference.getBody, segmentDirection, reference.roadPath)
+			assert segment !== null
+			this.reference = new WeakReference(reference)
+			this.segment = new WeakReference(segment)
+			this.roadEntry = new WeakReference(if(segmentDirection) segment.beginPoint else segment.endPoint)
+		}
+
+		def getRoadEntry : RoadConnection {
+			this.roadEntry.get
+		}
+
+		def getRoadSegment : RoadSegment {
+			this.segment.get
+		}
+
+		def isCrashed : boolean {
+			this.reference.get.isCrashed
+		}
+
+		def setCrashed(crashed : boolean) {
+			this.reference.get.setCrashed(crashed)
+		}
+
+		def getPositionRange : PositionRange {
+			if (this.range === null) {
+				var ref = reference.get
+				val len = ref.oldPosition.segment.length
+				var r0 : double
+				var r1 : double
+				if (isSegmentDirection) {
+					r0 = ref.oldPosition.curvilineCoordinate - getDemiWidth
+					r1 = len
+				} else {
+					r0 = 0.0
+					r1 = ref.oldPosition.curvilineCoordinate + getDemiWidth
+				}
+				r0 = MathUtil::clamp(r0, 0.0, len)
+				r1 = MathUtil::clamp(r1, 0.0, len)
+				if (r0 <= r1) {
+					this.range = new PositionRange(r0, r1, isSegmentDirection)
+				} else {
+					this.range = new PositionRange(r1, r0, isSegmentDirection)
+				}
+			}
+			return this.range
+		}
+
+		def getPreviousCandidate : ActionCandidate {
+			null
+		}
+
+		def setNextCandidate(next : ActionCandidate) {
+			this.next = new WeakReference(next)
+		}
+		
+		def getNextCandidate : ActionCandidate {
+			this.next.get
+		}
+
+		def getEndCandidate : AbstractAgentMoveCandidate {
+			nextCandidate.endCandidate
+		}
+
+		override moveBackwardTo(range : PositionRange) {
+			val end = endCandidate
+			nextCandidate.cancelChain
+			var newPosition = range.getCollisionPositionFor(this)
+			val delta = end.newPosition.curvilineCoordinate - newPosition
+			val path = end.getReversedPath
+			val transform = new Transform1D(path, path.getSegmentDirectionAt(0), delta, 0.0)
+			transform.transform(end.newPosition)
+		}
+
+	}
+
+	/** 
+	 * Description of the intermediate segment for a motion of an agent body into the environment.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class MoveIntermediateCandidate extends ActionCandidate {
+
+		val reference : WeakReference<AbstractAgentMoveCandidate>
+
+		val segment : WeakReference<RoadSegment>
+
+		val roadEntry : WeakReference<RoadConnection>
+
+		val previous : WeakReference<ActionCandidate>
+
+		var next : WeakReference<ActionCandidate>
+
+		val range : PositionRange
+
+		new (reference : AbstractAgentMoveCandidate, previous : ActionCandidate,
+			segment : RoadSegment, segmentDirection : boolean) {
+			super(reference.getBody, segmentDirection, reference.roadPath)
+			assert segment !== null
+			this.reference = new WeakReference(reference)
+			this.segment = new WeakReference(segment)
+			this.roadEntry = new WeakReference(if (segmentDirection) segment.beginPoint else segment.endPoint)
+			this.previous = new WeakReference(previous)
+			previous.nextCandidate = this
+			this.range = new PositionRange(0.0, segment.length, segmentDirection)
+		}
+
+		def getRoadEntry : RoadConnection {
+			this.roadEntry.get
+		}
+
+		def getRoadSegment : RoadSegment {
+			this.segment.get
+		}
+
+		def isCrashed : boolean {
+			this.reference.get.isCrashed
+		}
+
+		def setCrashed(crashed : boolean) {
+			this.reference.get.setCrashed(crashed)
+		}
+
+		def getPositionRange : PositionRange {
+			return this.range
+		}
+
+		def getPreviousCandidate : ActionCandidate {
+			this.previous.get
+		}
+
+		def getNextCandidate : ActionCandidate {
+			this.next.get
+		}
+
+		def setNextCandidate(next : ActionCandidate) {
+			this.next = new WeakReference(next)
+		}
+
+		def getEndCandidate : AbstractAgentMoveCandidate {
+			nextCandidate.endCandidate
+		}
+
+		override moveBackwardTo(range : PositionRange) {
+			throw new UnsupportedOperationException
+		}
+
+	}
+	
+	/** 
+	 * Description of the final position for a motion of an agent body into the environment.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	@ToString
+	protected static abstract class AbstractAgentMoveCandidate extends ActionCandidate {
+		
+		var previous : WeakReference<ActionCandidate>
+
+		val oldPosition : Point1D<?, ?, ?>
+
+		val newPosition : Point1d
+
+		var entryPoint : RoadConnection
+
+		val motion : Vector1d
+
+		var crashed = false
+
+		var range : PositionRange
+		
+		var reversedPath : RoadPath
+		
+		new (body : MobileAgentBody, oldPosition : Point1D<?, ?, ?>, newPosition : Point1d,
+			entryPoint : RoadConnection, segmentDirection : boolean, motion : Vector1d,
+			roadPath : List<? extends RoadSegment>) {
+			super(body, segmentDirection, roadPath)
+			assert oldPosition !== null
+			assert newPosition !== null
+			assert entryPoint !== null
+			assert motion !== null
+			this.previous = new WeakReference(previous)
+			this.oldPosition = oldPosition.clone
+			this.newPosition = newPosition.clone
+			this.entryPoint = entryPoint
+			this.motion = motion
+		}
+
+		def getRoadEntry : RoadConnection {
+			this.entryPoint
+		}
+
+		def getRoadSegment : RoadSegment {
+			this.newPosition.segment as RoadSegment
+		}
+		
+		def setPreviousCandiate(previous : ActionCandidate) {
+			this.previous = new WeakReference(previous)
+		}
+
+		def getPreviousCandidate : ActionCandidate {
+			this.previous.get
+		}
+
+		def getNextCandidate : ActionCandidate {
+			null
+		}
+
+		def getEndCandidate : AbstractAgentMoveCandidate {
+			this
+		}
+
+		def isCrashed : boolean {
+			this.crashed
+		}
+
+		def setCrashed(crashed : boolean) {
+			this.crashed = crashed
+		}
+	
+		def getPositionRange : PositionRange {
+			if (this.range === null) {
+				val nsegment = this.newPosition.segment as RoadSegment
+				val osegment = this.oldPosition.segment as RoadSegment
+				val segmentDirection = nsegment.beginPoint.UUID == this.entryPoint.UUID
+				var r0 : double
+				var r1 : double
+				val len = this.newPosition.segment.length
+				if (nsegment.UUID == osegment.UUID) {
+					val delta = if(segmentDirection) getDemiWidth else -getDemiWidth
+					r0 = this.oldPosition.curvilineCoordinate - delta
+					r1 = this.newPosition.curvilineCoordinate + delta
+				} else if (segmentDirection) {
+					r0 = 0.0
+					r1 = this.newPosition.curvilineCoordinate + getDemiWidth
+				} else {
+					r0 = len - this.newPosition.curvilineCoordinate - getDemiWidth
+					r1 = len
+				}
+				r0 = MathUtil::clamp(r0, 0.0, len)
+				r1 = MathUtil::clamp(r1, 0.0, len)
+				if (r0 <= r1) {
+					this.range = new PositionRange(r0, r1, segmentDirection)
+				} else {
+					this.range = new PositionRange(r1, r0, segmentDirection)
+				}
+			}
+			return this.range
+		}
+
+		private def getReversedPath : RoadPath {
+			if (this.reversedPath === null) {
+				this.reversedPath = new RoadPath
+				if (this.roadPath.size === 1) {
+					if (isSegmentDirection) {
+						assert roadSegment == this.roadPath.get(0)
+						this.reversedPath.add(this.roadPath.get(0), roadSegment.endPoint)
+					} else {
+						this.reversedPath.add(this.roadPath.get(0), roadSegment.beginPoint)
+					}
+				} else {
+					this.reversedPath.addAll(this.roadPath)
+					this.reversedPath.invert
+				}
+				this.reversedPath.removeBefore(roadSegment)
+			}
+			return this.reversedPath
+		}
+
+		override moveBackwardTo(range : PositionRange) {
+			var newPosition = range.getCollisionPositionFor(this)
+			val delta = this.newPosition.curvilineCoordinate - newPosition
+			val path = getReversedPath
+			val transform = new Transform1D(path, path.getSegmentDirectionAt(0), delta, 0.0)
+			transform.transform(this.newPosition)
+		}
+
+		def ensurePositionOnSegment : void {
+			this.newPosition.curvilineCoordinate = MathUtil::clamp(this.newPosition.curvilineCoordinate, 0,
+				this.newPosition.segment.length)
+		}
+
+	}
+
+	/** 
+	 * Description of the final position for a motion of an agent body into the environment.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class MoveFullCandidate extends AbstractAgentMoveCandidate {
+
+		new (body : MobileAgentBody, oldPosition : Point1D<?, ?, ?>, newPosition : Point1d, entryPoint : RoadConnection,
+			segmentDirection : boolean, motion : Vector1d, roadPath : List<? extends RoadSegment>) {
+			super(body, oldPosition, newPosition, entryPoint, segmentDirection, motion, roadPath)
+		}
+
+		new (body : MobileAgentBody, segmentDirection : boolean) {
+			super(body,
+				body.roadPosition,
+				new Point1d(body.roadPosition),
+				if (segmentDirection) body.roadSegment.beginPoint else body.roadSegment.endPoint,
+				segmentDirection, new Vector1d,
+				Collections::singletonList(body.roadSegment))
+		}
+
+	}
+
+	/** 
+	 * Description of the final position for a motion of an agent body into the environment.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class MoveDestinationCandidate extends AbstractAgentMoveCandidate {
+		//
+	}
+
+	/** 
+	 * Range of positions on a segment
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class PositionRange extends DoubleRange {
+
+		@Accessors
+		val segmentDirection : boolean
+
+		new (min : double, max : double, segmentDirection : boolean) {
+			super(min, max)
+			this.segmentDirection = segmentDirection
+		}
+
+		def isAfter(o : PositionRange) : boolean {
+			if (this.segmentDirection) {
+				return this.max >= o.min
+			} else {
+				return this.min <= o.max 
+			}
+		}
+
+		def getCollisionPositionFor(o : ActionCandidate) : double {
+			if (this.segmentDirection) {
+				return this.min - o.getDemiWidth - DISTANCE_AFTER_CRASH
+			}
+			return this.max + o.getDemiWidth + - DISTANCE_AFTER_CRASH
+		}
+
+	}
+
+	/** 
+	 * Actions for a road lane.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class PerLaneActions {
+
+		val lists : List<ActionCandidate>[]
+
+		new (segment : RoadSegment) {
+			this.lists = newArrayOfSize(segment.laneCount)
+		}
+
+		def getRawCandidates : List<ActionCandidate>[] {
+			this.lists
+		}
+
+		def addAction(laneIndex : int, action : ActionCandidate) {
+			var receiver = this.lists.get(laneIndex)
+			if (receiver === null) {
+				receiver = newArrayList
+				this.lists.set(laneIndex, receiver)
+			}
+			ListUtil::add(receiver, NEW_STATE_COMPARATOR, action, true, false)
+		}
+
+		/** Loop on the action candidates per lane.
+		 * The lambda function is called when more then 1 candidate is in the list.
+		 */
+		def forEachActionCandidatesPerLaneWhenMultipleCandidate(consumer : BiConsumer<Integer, List<ActionCandidate>>) {
+			for (var i = 0; i < this.lists.length ; i++) {
+				val elt = this.lists.get(i)
+				if (elt !== null && elt.size > 1) {
+					consumer.accept(i, elt)
+				}
+			}
+		}
+
+		/** Loop on the candidates per lane for agent body motions.
+		 */
+		def forEachAgentMoveCandidatePerLane(
+			consumer : BiConsumer<Integer, Iterable<CollisionDetectorInfluenceApplier1d.AbstractAgentMoveCandidate>>) {
+			for (var i = 0; i < this.lists.length; i++) {
+				val elt = this.lists.get(i)
+				if (elt !== null) {
+					val acts = elt.filter(typeof(CollisionDetectorInfluenceApplier1d.AbstractAgentMoveCandidate))
+					if (acts.iterator.hasNext) {
+						consumer.accept(i, acts)
+					}
+				}
+			}
+		}
+
+	}
+
+	/** 
+	 * Updater of the environment space.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class EnvironmentUpdater {
+
+		/** Apply the environment changes.
+		 *
+		 * @param actions the changes.
+		 * @param timeManager the time manager. 
+		 * @return the number of changes that were applied to the environment state. 
+		 */
+		def applyEnvironmentActions(actions : Map<RoadSegment, PerLaneActions>, timeManager : TimeManager) : int {
+			val nbChanges = new AtomicInteger
+			for (changes : actions.values) {
+				changes.forEachAgentMoveCandidatePerLane [ laneIndex, laneActions |
+					for (laneAction : laneActions) {
+						if (!laneAction.isCancel) {
+							if (laneAction.applyAction(timeManager)) {
+								nbChanges.incrementAndGet
+							}
+						}
+					}
+				]
+			}
+			return nbChanges.get
+		}
+
+		protected def applyAction(laneAction : AbstractAgentMoveCandidate, timeManager : TimeManager) : boolean {
+			laneAction.ensurePositionOnSegment
+			val newPosition = laneAction.newPosition
+			assert newPosition !== null
+			assert newPosition.segment instanceof RoadSegment
+			val newRoadEntry = laneAction.getRoadEntry
+			assert newRoadEntry !== null
+			assert newRoadEntry.isConnectedSegment(newPosition.segment as RoadSegment)
+
+			val body = laneAction.getBody
+
+			val previousSegment = body.roadSegment
+
+			body.roadEntry = newRoadEntry
+			body.roadPosition = newPosition
+
+			if (laneAction.isCrashed) {
+				// Force static status for the crashed vehicle
+				body.updateLinearSpeed(0.0, 0.0, 0.0, timeManager)
+			} else {
+				body.updateLinearSpeed(laneAction.motion.x, laneAction.motion.y, timeManager)
+			}
+
+			val currentSegment = body.roadSegment
+			assert currentSegment == newPosition.segment
+
+			if (currentSegment.UUID != previousSegment.UUID) {
+				previousSegment.removeMobileObject(body)
+				currentSegment.addMobileObject(body)
+			}
+
+			return !MathUtil::isEpsilonZero(laneAction.motion.lengthSquared)
+		}
+
+	}
+
+	/** 
+	 * Concrete implementation of the buildong of action space.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class ActionSpaceBuilder {
+
+		/** Generate a CSV files from a description of the environment's state changes.
+		 *
+		 * @param state the changes.
+		 * @param filename the name of the file to create.
+		 * @return the number of written rows.
+		 */
+		static def generateCsv(state : Map<RoadSegment, PerLaneActions>, filename : String) : int {
+			var nbrows = 0
+			try (val stream = new PrintStream(new FileOutputStream(filename))) {
+				stream.print("Segment ID\t")
+				stream.print("Seg. Length\t")
+				stream.print("Lane\t")
+				stream.print("Vehicle ID\t")
+				stream.print("Canceled?\t")
+				stream.print("Seg. ID\t")
+				stream.print("Seg. Direction?\t")
+				stream.print("Start position\t")
+				stream.print("End position\t")
+				stream.print("Motion Type\n")
+				for (entry : state.entrySet) {
+					val segment = entry.key
+					val allActions = entry.value
+					for (var i = 0; i < allActions.rawCandidates.length; i++) {
+						val actions = allActions.rawCandidates.get(i)
+						if (actions !== null) {
+							for (candidate : actions) {
+								stream.print(segment.UUID) // segment id
+								stream.print("\t")
+								stream.print(segment.length) // segment length
+								stream.print("\t")
+								stream.print(i) // Lane
+								stream.print("\t")
+								stream.print(candidate.getBody.UUID) // vehicle id
+								stream.print("\t")
+								stream.print(candidate.isCancel)
+								stream.print("\t")
+								stream.print(candidate.roadSegment.UUID)
+								stream.print("\t")
+								stream.print(candidate.isSegmentDirection)
+								stream.print("\t")
+								stream.print(candidate.positionRange.min)
+								stream.print("\t")
+								stream.print(candidate.positionRange.max)
+								stream.print("\t")
+								stream.print(candidate.class.simpleName)
+								stream.print("\n")
+								nbrows++
+							}
+						}
+					}
+				}
+			}
+			return nbrows
+		}
+
+		/** Compute the changes to aply to the environment state from the agents' influences.
+		 *
+		 * @param buffer the set of influences from the agents.
+		 * @param bodies the collection of registered bodies.
+		 * @param timeManager the time manager.
+		 * @return the description of the environment's state changes.
+		 */
+		def buildFutureState(buffer : Map<RoadSegment, Map<MobileAgentBody, Transform1D<RoadSegment>>>,
+			bodies : Map<UUID, MobileAgentBody>, timeManager : TimeManager) : Map<RoadSegment, PerLaneActions> {
+			val newState = new HashMap<RoadSegment, PerLaneActions>
+			val processedSegments = <UUID>newHashSet
+			for (p0 : buffer.keySet) {
+				processedSegments += p0.UUID
+			}
+			val toBeProcessedSegments = newLinkedList
+			for (p0 : buffer.entrySet) {
+				val segment = p0.key
+				val influences = p0.value
+				val objectCollection = segment.getMobileObjects(typeof(MobileAgentBody))
+				newState.computeState(processedSegments, toBeProcessedSegments, segment, influences, timeManager,
+					objectCollection, true)
+
+				// XXX: FOR TEST
+				val objectCollection0 = newArrayList
+				for (obj : segment.immobileObjects) {
+					if (obj instanceof MobileAgentBody) {
+						objectCollection0 += obj
+					}
+				}
+				newState.computeState(processedSegments, toBeProcessedSegments, segment, influences, timeManager,
+					objectCollection0, false)
+			}
+			// Post processing for ensuring that all immobile vehicles are considered.
+			for (p0 : toBeProcessedSegments) {
+				val objectCollection = p0.getMobileObjects(typeof(MobileAgentBody))
+				for (body : objectCollection) {
+					val originLane = RoadTools::getRoadLaneIndex(body.position)
+					val originLaneDirection = p0.getLaneDirection(originLane)
+					val action = new MoveFullCandidate(body, originLaneDirection.isSegmentDirection)
+					newState.registerAction(null, null, p0, originLane, action)
+				}
+			}
+			return newState
+		}
+
+		protected def registerAction(newState : Map<RoadSegment, PerLaneActions>, processedSegments : Set<UUID>,
+			toBeProcessedSegments : Collection<RoadSegment>, segment : RoadSegment, lane : int, action : ActionCandidate) {
+			var list = newState.computeIfAbsent(segment) [
+				val acts = new PerLaneActions(it)
+				if (processedSegments !== null && processedSegments.add(it.UUID)) {
+					// Something associated to a segment that is not directly concerned by the current position of a moving vehicle
+					// We have to add the expected motions of the vehicles
+					toBeProcessedSegments += segment
+				}
+				return acts
+			]
+			list.addAction(lane, action)
+		}
+
+		protected def computeState(newState : Map<RoadSegment, PerLaneActions>, processedSegments : Set<UUID>, toBeProcessedSegments : Collection<RoadSegment>,
+			segment : RoadSegment, influences : Map<MobileAgentBody, Transform1D<RoadSegment>>, timeManager : TimeManager,
+			objectCollection : Collection<MobileAgentBody>, assumeIddleTransform : boolean) {
+			for (body : objectCollection) {
+				assert segment == body.position.segment
+				val originLane = RoadTools::getRoadLaneIndex(body.position)
+				val originLaneDirection = segment.getLaneDirection(originLane)
+				val transform = influences.get(body)
+				if (transform !== null) {
+					val newPosition = new Point1d(body.roadPosition)
+					val motion = new Vector1d
+					val newConnection = MobileRoadObject::tryTransform(transform, newPosition, body.roadEntry, motion,
+						timeManager)
+					val changeSegment = newConnection !== null
+					val connectionToUse = newConnection ?: body.roadEntry
+					val destinationSegment = newPosition.segment as RoadSegment
+					val destinationLane = RoadTools::getRoadLaneIndex(newPosition)
+					val destinationLaneDirection = destinationSegment.getLaneDirection(destinationLane)
+
+					if (changeSegment) {
+						val pathSegmentIterator = transform.path.iterator
+						assert pathSegmentIterator.hasNext
+
+						val firstSegment = pathSegmentIterator.next
+						assert firstSegment !== null
+						assert firstSegment == segment
+
+						val finalAction = new MoveDestinationCandidate(body, body.roadPosition, newPosition,
+							connectionToUse, destinationLaneDirection.isSegmentDirection, motion, transform.path)
+
+						val firstAction = new MoveStartCandidate(finalAction, firstSegment,
+							originLaneDirection.isSegmentDirection)
+						var traversedLane = originLane
+						newState.registerAction(processedSegments, toBeProcessedSegments, firstSegment, originLane,
+							firstAction)
+
+						var prevSegment = firstSegment
+						var prevAction : ActionCandidate = firstAction
+						while (pathSegmentIterator.hasNext) {
+							val traversedSegment = pathSegmentIterator.next
+							//
+							// Do not treat the last segment
+							//
+							if (traversedSegment == destinationSegment) {
+								break 	// the loop
+							} else {
+								val c0 = traversedSegment.isFirstPointConnectedTo(prevSegment)
+								val c1 = prevSegment.isFirstPointConnectedTo(traversedSegment)
+								if (c0 === c1) {
+									traversedLane = traversedSegment.laneCount - traversedLane - 1
+								}
+								val traversedAction = new MoveIntermediateCandidate(finalAction, prevAction,
+									traversedSegment, c0)
+								newState.registerAction(processedSegments, toBeProcessedSegments, traversedSegment,
+									traversedLane, traversedAction)
+								prevSegment = traversedSegment
+								prevAction = traversedAction
+							}
+						}
+						prevAction.nextCandidate = finalAction
+						finalAction.previousCandiate = prevAction
+						newState.registerAction(processedSegments, toBeProcessedSegments, destinationSegment,
+							destinationLane, finalAction)
+					} else {
+						val action = new MoveFullCandidate(body, body.roadPosition, newPosition, connectionToUse,
+							destinationLaneDirection.isSegmentDirection, motion, transform.path)
+						newState.registerAction(processedSegments, toBeProcessedSegments, destinationSegment,
+							destinationLane, action)
+					}
+				} else if (assumeIddleTransform) {
+					// No transformation provided by the agent
+					// Then, assumes that the agent has no motion
+					val action = new MoveFullCandidate(body, originLaneDirection.isSegmentDirection)
+					newState.registerAction(processedSegments, toBeProcessedSegments, segment, originLane, action)
+				}
+			}
+		}
+	}
+
+	/** 
+	 * Concrete implementation of the collision detector.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	protected static class CollisionDetector {
+
+		/** Run the collision detector.
+		 * 
+		 * @param roads the segments on which the collision should be detected.
+		 * @param timeManager the time manager. 
+		 */
+		def collisionDetection(roads : Map<RoadSegment, PerLaneActions>, timeManager : TimeManager) : void {
+			for (segment : roads.keySet) {
+				val motions = roads.get(segment)
+				if (motions !== null) {
+					motions.forEachActionCandidatesPerLaneWhenMultipleCandidate [ laneIndex, actions |
+						val dir = RoadTools::getDirectionForLane(segment, laneIndex)
+						collisionDetection(segment, dir, actions, timeManager)
+					]
+				}
+			}
+		}
+
+		protected def collisionDetection(road : RoadSegment, laneDirection : Direction1D, motions : List<ActionCandidate>,
+			timeManager : TimeManager) {
+			var iterator : Iterator<ActionCandidate>
+			if (laneDirection.isSegmentDirection) {
+				iterator = motions.reverseIterator
+			} else {
+				iterator = motions.iterator
+			}
+
+			assert iterator.hasNext
+
+			var leaderDesc = iterator.next
+			while (leaderDesc.cancel && iterator.hasNext) {
+				leaderDesc = iterator.next
+			}
+			val postAdded = newArrayList
+			val newElementA = new OutParameter<ActionCandidate>
+			val newElementB = new OutParameter<ActionCandidate>
+			while (iterator.hasNext) {
+				var followerDesc = iterator.next
+				if (!followerDesc.cancel) {
+					newElementA.clear
+					newElementB.clear
+					if (detectVehicleCollision(leaderDesc, followerDesc, newElementA, newElementB)) {
+						// Collision detected!
+						val relativeSpeedAB = leaderDesc.getBody.linearSpeed - followerDesc.getBody.linearSpeed
+						leaderDesc.getBody.markBackCrash(relativeSpeedAB, timeManager)
+						leaderDesc.crashed = true
+						followerDesc.getBody.markFrontCrash(-relativeSpeedAB, timeManager)
+						followerDesc.crashed = true
+						if (newElementA.get !== null) {
+							postAdded += newElementA.get
+						}
+						if (newElementB.get !== null) {
+							followerDesc = newElementB.get
+							postAdded += followerDesc
+						}
+					}
+					leaderDesc = followerDesc
+				}
+			}
+			motions.addAll(postAdded)
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveFullCandidate, b : MoveFullCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			val ar = a.positionRange
+			val br = b.positionRange
+			if (br.isAfter(ar)) {
+				b.moveBackwardTo(ar)
+				return true
+			}
+			return false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveFullCandidate, b : MoveDestinationCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			val ar = a.positionRange
+			val br = b.positionRange
+			if (br.isAfter(ar)) {
+				b.moveBackwardTo(ar)
+				return true
+			}
+			return false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveFullCandidate, b : MoveStartCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			val ar = a.positionRange
+			val br = b.positionRange
+			if (br.min <= ar.min) {
+				b.moveBackwardTo(a.positionRange)
+				return true
+			}
+			return false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveFullCandidate, b : MoveIntermediateCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			b.moveBackwardTo(a.positionRange)
+			true
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveDestinationCandidate, b : MoveFullCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			val ar = a.positionRange
+			val br = b.positionRange
+			if (ar.isAfter(br)) {
+				a.moveBackwardTo(br)
+				return true
+			}
+			return false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveDestinationCandidate, b : MoveDestinationCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveDestinationCandidate, b : MoveStartCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveDestinationCandidate, b : MoveIntermediateCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveStartCandidate, b : MoveFullCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveStartCandidate, b : MoveDestinationCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveStartCandidate, b : MoveStartCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			val ar = a.endCandidate.positionRange
+			val br = b.endCandidate.positionRange
+			if (br.isAfter(ar)) {
+				val ea = a.endCandidate
+				a.cancelChain
+				var newA = new MoveFullCandidate(ea.getBody, ea.oldPosition, new Point1d(ea.oldPosition),
+					a.getRoadEntry, a.isSegmentDirection, ea.motion, a.roadPath)
+				replacementA.set(newA)
+				b.moveBackwardTo(newA.positionRange)
+				return true
+			}
+			return false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveStartCandidate, b : MoveIntermediateCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			val ar = a.endCandidate.positionRange
+			val br = b.endCandidate.positionRange
+			if (br.isAfter(ar)) {
+				val ea = a.endCandidate
+				a.cancelChain
+				var newA = new MoveFullCandidate(ea.getBody, ea.oldPosition, new Point1d(ea.oldPosition),
+					a.getRoadEntry, a.isSegmentDirection, ea.motion, a.roadPath)
+				replacementA.set(newA)
+				b.moveBackwardTo(newA.positionRange)
+				return true
+			}
+			return false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveIntermediateCandidate, b : MoveFullCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			a.moveBackwardTo(b.positionRange)
+			return true
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveIntermediateCandidate, b : MoveDestinationCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveIntermediateCandidate, b : MoveStartCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			val ar = a.endCandidate.positionRange
+			val br = b.endCandidate.positionRange
+			if (ar.isAfter(br)) {
+				val eb = b.endCandidate
+				b.cancelChain
+				var newB = new MoveFullCandidate(eb.getBody, eb.oldPosition, new Point1d(eb.oldPosition),
+					b.getRoadEntry, b.isSegmentDirection, eb.motion, b.roadPath)
+				replacementB.set(newB)
+				a.moveBackwardTo(newB.positionRange)
+				return true
+			}
+			return false
+		}
+
+		protected dispatch def detectVehicleCollision(a : MoveIntermediateCandidate, b : MoveIntermediateCandidate,
+			replacementA : OutParameter<ActionCandidate>, replacementB : OutParameter<ActionCandidate>) : boolean {
+			false
+		}
+
+	}
+
+}

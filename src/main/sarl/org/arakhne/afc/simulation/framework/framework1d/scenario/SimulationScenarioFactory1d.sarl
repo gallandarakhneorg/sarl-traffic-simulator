@@ -1,0 +1,297 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.scenario
+
+import io.sarl.lang.util.OutParameter
+import java.io.File
+import java.util.Collection
+import java.util.HashMap
+import java.util.List
+import java.util.Map
+import java.util.ResourceBundle
+import java.util.UUID
+import javafx.scene.chart.XYChart
+import org.arakhne.afc.gis.mapelement.MapElement
+import org.arakhne.afc.gis.maplayer.MapElementLayer
+import org.arakhne.afc.gis.maplayer.MultiMapLayer
+import org.arakhne.afc.gis.maplayer.TreeMapElementLayer
+import org.arakhne.afc.gis.road.layer.RoadNetworkLayer
+import org.arakhne.afc.gis.road.primitive.RoadNetwork
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.simulation.framework.base.config.ProbeConfig
+import org.arakhne.afc.simulation.framework.base.environment.EnvironmentObjectGroup
+import org.arakhne.afc.simulation.framework.base.preferences.PreferenceManager
+import org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton
+import org.arakhne.afc.simulation.framework.base.probes.Probe
+import org.arakhne.afc.simulation.framework.base.probes.ProbeManager
+import org.arakhne.afc.simulation.framework.base.scenario.AbstractSimulationScenarioFactory
+import org.arakhne.afc.simulation.framework.framework1d.config.AbstractConfiguration1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.MobileAgentBody
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+import org.arakhne.afc.simulation.framework.framework1d.environment.Spawner1d
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+import org.arakhne.afc.simulation.framework.framework1d.probes.EnvironmentLocalProbe1d
+
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+import static extension org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d.*
+import static extension org.arakhne.afc.vmutil.ReflectionUtil.*
+
+/**
+ * Reader of Simulation scenario.
+ *
+ * @param <T> the type of the configuration to read.
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class SimulationScenarioFactory1d<T extends AbstractConfiguration1d>
+		extends AbstractSimulationScenarioFactory<SimulationScenario1d<T>, T, AbstractXmlConfigurationReader1d<T>,
+		RoadNetwork> {
+
+	val shapeReader = new ShapeReader
+
+	protected def getCarWidth : double {
+		typeof(PreferenceManager1d).singleton.carWidth
+	}
+
+	protected def getCarHeight : double {
+		typeof(PreferenceManager1d).singleton.carHeight
+	}
+
+	/** Read general preferences from the simulation configuration in order to override the preferences
+	 * into the simulator.
+	 * 
+	 * @param configuration the simulation configuration.
+	 */
+	protected def loadGeneralPreferences(configuration : T) : void {
+	}
+
+	/** Read standard layers from the simulation configuration and include them into the simulation scenario.
+	 * 
+	 * @param configuration the simulation configuration.
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation. 
+	 */
+	protected def loadStandardLayers(configuration : T, loadedRoads : RoadNetworkLayer,
+		containers : List<MapElementLayer<?>>) : void {
+		for (layer : configuration.layers) {
+			var loadedResource = this.shapeReader.loadShapeFile(layer.file)
+			if (loadedResource !== null) {
+				loadedResource.UUID = layer.ID
+				var id = layer.name
+				if (!id.isNullOrEmpty) {
+					loadedResource.name = id
+				}
+				containers.add(loadedResource)
+			}
+		}
+	}
+
+	/** Read road objects from the simulation configuration and include them into the simulation scenario.
+	 * 
+	 * @param configuration the simulation configuration.
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation. 
+	 * @param objectAgents the mapping between the object ID and the types of the agents that
+	 *     should be associated to the objects.
+	 */
+	protected def loadRoadObjects(configuration : T, loadedRoads : RoadNetworkLayer,
+		containers : List<MapElementLayer<?>>, objectAgents : Collection<EnvironmentObjectGroup>) : void {
+		var network = loadedRoads.roadNetwork
+		for (group : configuration.roadObjectGroups) {
+			var objectLayer = new TreeMapElementLayer
+
+			var rawGroupType = group.type
+			var groupType : Class<? extends EnvironmentObjectGroup>
+			if (rawGroupType === null || !typeof(EnvironmentObjectGroup).isAssignableFrom(rawGroupType)) {
+				groupType = typeof(EnvironmentObjectGroup)
+			} else {
+				groupType = rawGroupType.asSubclass(typeof(EnvironmentObjectGroup))
+			}
+			val groupInstance = groupType.newInstance
+			groupInstance.id = UUID::randomUUID
+			groupInstance.name = group.name
+
+			for (obj : group.roadObjects) {
+				var pos1d = network.getNearestPositionOnRoadBorder(obj.position)
+				var id = obj.ID
+				var text = obj.text
+				var instance : RoadObject
+				if (text.nullOrEmpty) {
+					instance = obj.type.newInstance(id, pos1d, obj.position)
+				} else {
+					instance = obj.type.newInstance(id, pos1d, obj.position, text)
+				}
+				(instance.roadPosition.segment as RoadSegment).addImmobileObject(instance)
+				if (instance instanceof MapElement) {
+					objectLayer.addMapElement(instance)
+				}
+				// Create an associated agent.
+				var agentType = obj.agentType
+				if (agentType !== null) {
+					groupInstance.associate(instance.UUID, instance, agentType, obj.agentParameters)
+				}
+			}
+			if (!objectLayer.isEmpty) {
+				containers.add(objectLayer)
+			}
+			if (!groupInstance.isEmpty) {
+				objectAgents += groupInstance
+			}
+		}
+	}
+
+	/** Read spawners from the simulation configuration and include them into the simulation scenario.
+	 *
+	 * @param root the root folder.
+	 * @param configuration the simulation configuration.
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation. 
+	 * @param spawners the collection of spawners that must be included into the simulation.
+	 */
+	protected def loadSpawners(root : File, configuration : T, loadedRoads : RoadNetworkLayer,
+		containers : List<MapElementLayer<?>>, spawners : List<Spawner1d>) : void {
+		var network = loadedRoads.roadNetwork
+		for (obj : configuration.spawners) {
+			if (obj.agentType !== null) {
+				var pos1d = network.getNearestPosition(obj.position)
+				var id = obj.ID
+				var law = obj.createLawObject
+				if (law !== null) {
+					var bt0 = obj.bodyType
+					var bt1 : Class<? extends MobileAgentBody>
+					if (bt0 !== null && typeof(MobileAgentBody).isAssignableFrom(bt0)) {
+						bt1 = bt0.asSubclass(typeof(MobileAgentBody))
+					} else {
+						bt1 = typeof(MobileAgentBody)
+					}
+					//
+					val bp = new HashMap(obj.bodyParameters)
+					val initialLaneLawDescription = bp.get("initialLaneLaw")
+					if (initialLaneLawDescription instanceof Map) {
+						val obj0 : Object = initialLaneLawDescription
+						val desc = obj0 as Map<String, Object>
+						val initialLaneLaw = desc.createLawObject
+						if (initialLaneLaw !== null) {
+							bp.put("initialLaneLaw", initialLaneLaw)
+						} else {
+							bp.remove("initialLaneLaw")
+						}
+					}
+					// 
+					var spawner = new Spawner1d(pos1d,
+						getCarWidth, getCarHeight,
+						id, law, obj.budget, obj.agentType, bt1,
+						bp,
+						obj.agentParameters)
+					spawners += spawner
+				}
+			}
+		}
+	}
+
+	/** Read a simulation scenario and create the simulation infrastructure.
+	 * 
+	 * @param root the root folder.
+	 * @param configuration the simulation configuration.
+	 * @param bundle the localization resource bundle
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation.
+	 * @param objectAgents the mapping between the object ID and the types of the agents that
+	 *     should be associated to the objects.
+	 * @param spawners the collection of spawners that must be included into the simulation.
+	 * @param probeManager the receiver of the probe manager.
+	 */
+	protected def buildSimulationScenario(root : File, configuration : T,
+			bundle : ResourceBundle,
+			loadedRoads : RoadNetworkLayer,
+			containers : List<MapElementLayer<?>>,
+			objectAgents : Collection<EnvironmentObjectGroup>,
+			spawners : List<Spawner1d>, probeManager : OutParameter<ProbeManager>, 
+			charts : Map<UUID, XYChart<Double, Double>>) : void {
+		loadStandardLayers(configuration, loadedRoads, containers)
+		loadRoadObjects(configuration, loadedRoads, containers, objectAgents)
+		loadSpawners(root, configuration, loadedRoads, containers, spawners)
+		loadProbeManager(root, configuration, loadedRoads.roadNetwork, containers, probeManager)
+		var pm = probeManager.get
+		if (pm !== null) {
+			loadCharts(root, configuration, bundle, pm, charts)
+		}
+	}
+
+	protected override initProbe(probe : Probe, config : ProbeConfig, environmentModel : RoadNetwork) {
+		if (probe instanceof EnvironmentLocalProbe1d) {
+			var pos1d = environmentModel.getNearestPosition(config.position)
+			probe.position = pos1d
+		}
+	}
+
+	/** Read a simulation scenario and create the simulation infrastructure.
+	 *
+	 * @param file the simulation scenario file to read.
+	 * @param bundle the localization bundle to be used.
+	 * @return the scenario description. 
+	 */
+	def buildSimulationScenario(file : File, bundle : ResourceBundle) : SimulationScenario1d<T> {
+		assert file !== null
+		var configuration = this.xmlReader.loadXmlConfiguration(file, bundle)
+
+		val prefs = PreferenceManagerSingleton::getSingleton(typeof(PreferenceManager))
+		prefs.overridePreferences(configuration.generalPreferences)
+
+		val containers = newArrayList
+		var loadedRoads = this.shapeReader.loadRoads(configuration.roadNetwork)
+		if (loadedRoads !== null) {
+			containers.add(loadedRoads)
+			var spawners = <Spawner1d>newArrayList
+			var objectAgents = newArrayList
+			var probeManager = new OutParameter
+			var charts = <UUID, XYChart<Double, Double>>newTreeMap(null)
+			buildSimulationScenario(
+				file.parentFile, configuration, bundle, loadedRoads, containers,
+				objectAgents, spawners, probeManager, charts)
+			val layer = new MultiMapLayer
+			if (containers.size == 1) {
+				layer.addMapLayer(containers.get(0))
+			} else {
+				for (child : containers) {
+					layer.addMapLayer(child)
+				}
+			}
+
+			var environmentModel = loadedRoads.createEnvironmentModel
+
+			return new SimulationScenario1d(layer, environmentModel, configuration, objectAgents, spawners,
+				probeManager.get, charts, configuration.generalPreferences)
+		}
+	}
+
+	/** Create the instance of the environment model.
+	 *
+	 * @param roads the loaded roads.
+	 * @return the environment model.
+	 */
+	protected def createEnvironmentModel(roads : RoadNetworkLayer) : EnvironmentModel1d {
+		new EnvironmentModel1d(roads)
+	}
+
+}

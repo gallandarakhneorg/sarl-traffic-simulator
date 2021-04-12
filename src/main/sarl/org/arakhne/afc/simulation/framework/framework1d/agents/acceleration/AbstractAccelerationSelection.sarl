@@ -1,0 +1,121 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.agents.acceleration
+
+import io.sarl.lang.util.OutParameter
+import java.util.List
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.math.geometry.d1.Direction1D
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.math.geometry.d1.d.Rectangle1d
+import org.arakhne.afc.simulation.framework.framework1d.agents.cruisespeed.CruiseSpeedManager
+import org.arakhne.afc.simulation.framework.framework1d.agents.obstacle.ObstacleDetector
+import org.arakhne.afc.simulation.framework.framework1d.environment.BodyDescription
+import org.arakhne.afc.simulation.framework.framework1d.environment.ObjectType
+import org.arakhne.afc.simulation.framework.framework1d.environment.PerceptionUnit1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+
+/** 
+ * Abstract implementation for acceleration selection.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+abstract skill AbstractAccelerationSelection implements AccelerationSelection {
+
+	uses ObstacleDetector, CruiseSpeedManager
+
+	override computeAcceleration(path : RoadPath, perceptions : List<PerceptionUnit1d<RoadObject>>, body : BodyDescription,
+		comfortDeceleration : double, minimalDistance : double, freeDrivingDistance : double, reactionTime : double,
+		destinationPosition : Point1d = null) : double {
+		computeAcceleration(path, perceptions,
+			body.position,
+			body.directionOnRoad,
+			body.linearVelocity,
+			comfortDeceleration,
+			body.maxLinearAcceleration,
+			body.maxLinearDeceleration,
+			body.bounds,
+			minimalDistance, freeDrivingDistance,
+			reactionTime, destinationPosition)
+	}
+
+	override computeAcceleration(path : RoadPath, perceptions : List<PerceptionUnit1d<RoadObject>>,
+		currentPosition : Point1d, currentDirection : Direction1D, currentSpeed : double,
+		comfortDeceleration : double, maxAcceleration : double, maxDeceleration : double,
+		vehicleBounds : Rectangle1d, minimalDistance : double, freeDrivingDistance : double,
+		reactionTime : double, destinationPosition : Point1d = null) : double {
+
+		assert reactionTime > 0.0
+		assert minimalDistance > 0.0
+
+		val desiredSpeed = getCruiseSpeed
+
+		val target = new OutParameter
+		val targetDistance = new OutParameter
+		val targetSpeed = new OutParameter
+		
+		var obstacleType = detectObstacle(path,
+			currentPosition, currentSpeed,
+			vehicleBounds, destinationPosition, perceptions,
+			target, targetSpeed, targetDistance)
+		
+		if (obstacleType !== null && obstacleType !== ObjectType::OBSTACLE_WEATHER_OBJECT 
+			&& targetDistance.get >= freeDrivingDistance) {
+			obstacleType = null
+		}
+
+		if (obstacleType !== null) {
+			return computeObstacleDrivingAcceleration(currentSpeed, desiredSpeed, comfortDeceleration, maxAcceleration,
+				maxDeceleration, minimalDistance, reactionTime, targetDistance.get, targetSpeed.get)
+		}
+		return computeFreeDrivingAcceleration(currentSpeed, desiredSpeed, maxAcceleration, maxDeceleration)
+	}
+
+	/** Compute the acceleration in case of free driving mode.
+	 *
+	 * @param currentSpeed the current speed of the agent.
+	 * @param desiredSpeed the expected speed for the agent.
+	 * @param maxAccelleration the maximal acceleration to apply to the agent.
+	 * @param maxDecelleration the maximal deceleration to apply to the agent.
+	 */
+	protected abstract def computeFreeDrivingAcceleration(
+		currentSpeed : double, desiredSpeed : double,
+		maxAcceleration : double, maxDeceleration : double) : double
+
+	/** Compute the acceleration in case of existing obstacle.
+	 * 
+	 * @param currentSpeed the current speed of the agent.
+	 * @param desiredSpeed the expected speed for the agent.
+	 * @param comfortDecelleration the comfort deceleration to apply to the agent.
+	 * @param maxAccelleration the maximal acceleration to apply to the agent.
+	 * @param maxDecelleration the maximal deceleration to apply to the agent.
+	 * @param safetyDistance the distance under which the agent will not have an obstacle.
+	 * @param reactionTime the reaction time of the agent.
+	 * @param obstacleDistance the distance to the obstacle.
+	 * @param obstacleSpeed the speed of the obstacle.
+	 */
+	protected abstract def computeObstacleDrivingAcceleration(currentSpeed : double, desiredSpeed : double,
+		comfortDeceleration : double, maxAcceleration : double, maxDeceleration : double, safetyDistance : double,
+		reactionTime : double, obstacleDistance : double, obstacleSpeed : double) : double
+
+}

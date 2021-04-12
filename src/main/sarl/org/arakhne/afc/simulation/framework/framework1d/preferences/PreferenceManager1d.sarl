@@ -1,0 +1,592 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.preferences
+
+import org.arakhne.afc.simulation.framework.base.preferences.PreferenceManager
+import org.arakhne.afc.simulation.framework.framework1d.scenario.SimulationScenarioFactory1d
+
+/**
+ * Manager of preferences for a simulator.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+interface PreferenceManager1d extends PreferenceManager {
+
+	
+	val FREE_DRIVING_DISTANCE = "freeDrivingDistance"
+
+	val FREE_DRIVING_DISTANCE_VALUE = 200.0
+
+	/** Replies the minimum distance that is considered for using the free driving behavior. 
+	 */
+	@Pure
+	def getFreeDrivingDistance : double
+
+	/** Change the minimum distance that is considered for using the free driving behavior.
+	 */
+	def setFreeDrivingDistance(distance : double)
+
+
+
+
+	val AGENT_PERCEPTION_DISTANCE = "agentPerceptionDistance"
+
+	val AGENT_PERCEPTION_DISTANCE_VALUE = 250.0
+
+	/** Replies the distance of perception for agents. 
+	 */
+	@Pure
+	def getAgentPerceptionDistance : double
+
+	/** Change the distance of perception for agents.
+	 */
+	def setAgentPerceptionDistance(distance : double)
+
+
+
+
+	val AGENT_SAFETY_DISTANCE = "agentSafetyDistance"
+
+	val AGENT_SAFETY_DISTANCE_VALUE = 5.0
+
+	/** Replies the safety distance for agents. 
+	 */
+	@Pure
+	def getAgentSafetyDistance : double
+
+	/** Change the safety distance for agents.
+	 */
+	def setAgentSafetyDistance(distance : double)
+
+
+
+
+	val AGENT_REACTION_TIME = "agentReactionTime"
+
+	val AGENT_REACTION_TIME_VALUE = 1.0
+
+	/** Replies the reaction time for agents. 
+	 */
+	@Pure
+	def getAgentReactionTime : double
+
+	/** Change the reaction time for agents.
+	 */
+	def setAgentReactionTime(time : double)
+
+
+
+
+
+	val AGENT_SPEED_APPROXIMATION = "agentSpeedApproximation"
+
+	val AGENT_SPEED_APPROXIMATION_VALUE = 1.38
+
+	/** Replies the approximation of speed for "human" agents. 
+	 */
+	@Pure
+	def getAgentSpeedApproximation : double
+
+	/** Change the approximation of speed for "human" agents. 
+	 */
+	def setAgentSpeedApproximation(speedApproximation : double)
+
+
+
+
+	val AGENT_DISTANCE_APPROXIMATION = "agentDistanceApproximation"
+
+	val AGENT_DISTANCE_APPROXIMATION_VALUE = 2.5
+
+	/** Replies the approximation of distance for "human" agents. 
+	 */
+	@Pure
+	def getAgentDistanceApproximation : double
+
+	/** Change the approximation of distance for "human" agents. 
+	 */
+	def setAgentDistanceApproximation(distanceApproximation : double)
+
+
+
+
+	val AGENT_PANEL_CONSIDERATION_DISTANCE = "agentPanelConsiderationDistance"
+
+	val AGENT_PANEL_CONSIDERATION_DISTANCE_VALUE = 60.0
+
+	/** Replies the distance under which a road sign is considered as significant by an agent. 
+	 */
+	@Pure
+	def getAgentPanelConsiderationDistance : double
+
+	/** Change the distance under which a road sign is considered as significant by an agent. 
+	 */
+	def setAgentPanelConsiderationDistance(speedApproximation : double)
+
+
+
+
+
+
+
+	val OBJECT_COMFORT_DECELERATION = "objectComfortDeceleration"
+
+	val OBJECT_COMFORT_DECELERATION_VALUE = 2.0
+
+	/** Replies the comfort deceleration for agents. 
+	 */
+	@Pure
+	def getObjectComfortDeceleration : double
+
+	/** Change the comfort deceleration for agents.
+	 */
+	def setObjectComfortDeceleration(deceleration : double)
+
+	
+	
+	
+	
+	val OBJECT_MAXIMUM_ACCELERATION = "objectMaximumAcceleration"
+
+	/** 
+	 * @see https://hypertextbook.com/facts/2001/MeredithBarricella.shtml
+	 */
+	val OBJECT_MAXIMUM_ACCELERATION_VALUE = 4.5
+
+	/** Replies the maximum acceleration for mobile objects.
+	 */
+	@Pure
+	def getObjectMaximumAcceleration : double
+
+	/** Change the maximum acceleration for mobile objects
+	 */
+	def setObjectMaximumAcceleration(acceleration : double)
+
+
+
+
+	val OBJECT_MAXIMUM_DECELERATION = "objectMaximumDeceleration"
+
+	/**
+	 * @see https://copradar.com/chapts/references/acceleration.html
+	 */
+	val OBJECT_MAXIMUM_DECELERATION_VALUE = 9.2
+
+	/** Replies the maximum deceleration for mobile objects.
+	 */
+	@Pure
+	def getObjectMaximumDeceleration : double
+
+	/** Change the maximum deceleration for mobile objects
+	 */
+	def setObjectMaximumDeceleration(deceleration : double)
+
+
+
+
+	val OBJECT_MAXIMUM_SPEED = "objectMaximumSpeed"
+
+	/** 220 km/h ~> 61 m/s.
+	 */
+	val OBJECT_MAXIMUM_SPEED_VALUE = 61.0
+
+	/** Replies the maximum speed for mobile objects.
+	 */
+	@Pure
+	def getObjectMaximumSpeed : double
+
+	/** Change the maximum speed for mobile objects
+	 */
+	def setObjectMaximumSpeed(speed : double)
+
+
+
+
+	val SPAWNER_ATTACH_TO_END_DISTANCE = "spawnerAttachToEndDistance"
+
+	val SPAWNER_ATTACH_TO_END_DISTANCE_VALUE = 5.0
+
+	/** Replies the distance to consider for assuming that a spawner is at the end of a segment.
+	 */
+	@Pure
+	def getSpawnerAttachToEndDistance : double
+
+	/** Change the distance to consider for assuming that a spawner is at the end of a segment.
+	 */
+	def setSpawnerAttachToEndDistance(distance : double)
+
+
+
+
+
+	val CAR_COLOR = "drawerCarColor"
+
+	val CAR_COLOR_VALUE = 0x0000FF
+
+	/** Replies the color of the cars.
+	 *
+	 * @return the color in RGB
+	 */
+	@Pure
+	def getCarColor : int
+
+	/** Change the color of the cars.
+	 * 
+	 * @param color the color in RGB
+	 */
+	def setCarColor(color : int)
+
+
+
+
+
+	val CRASHED_CAR_COLOR = "drawerCrashedCarColor"
+
+	val CRASHED_CAR_COLOR_VALUE = 0xFF0000
+
+	/** Replies the color of the crashed cars.
+	 * 
+	 * @return the color in RGB
+	 */
+	@Pure
+	def getCrashedCarColor : int
+
+	/** Change the color of the crashed cars.
+	 * 
+	 * @param color the color in RGB
+	 */
+	def setCrashedCarColor(color : int)
+
+	
+	
+	
+	val CAR_WIDTH = "carWidth"
+
+	/** @see {@link SimulationScenarioFactory1d}.
+	 */
+	val CAR_WIDTH_VALUE = 4.5
+
+	/** Replies the width of the cars.
+	 */
+	@Pure
+	def getCarWidth : double
+
+	/** Change the height of the cars.
+	 */
+	def setCarWidth(width : double)
+
+
+
+
+	val CAR_HEIGHT = "carHeight"
+
+	val CAR_HEIGHT_VALUE = 1.9
+
+	/** Replies the height of the cars.
+	 */
+	@Pure
+	def getCarHeight : double
+
+	/** Change the height of the cars.
+	 */
+	def setCarHeight(height : double)
+
+
+
+
+	val SPEED_LIMIT_INTERCHANGE_RAMP = "speedLimitInterchangeRamp"
+
+	val SPEED_LIMIT_INTERCHANGE_RAMP_VALUE = 110
+
+	/** Replies the speed limit for interchange ramp.
+	 */
+	@Pure
+	def getSpeedLimitInterchangeRamp : int
+
+	/** Change the speed limit for interchange ramp.
+	 */
+	def setSpeedLimitInterchangeRamp(limit : int)
+
+
+
+
+	val SPEED_LIMIT_FREEWAY = "speedLimitFreeway"
+
+	val SPEED_LIMIT_FREEWAY_VALUE = 120
+
+	/** Replies the speed limit for freeway.
+	 */
+	@Pure
+	def getSpeedLimitFreeway : int
+
+	/** Change the speed limit for freeway.
+	 */
+	def setSpeedLimitFreeway(limit : int)
+
+
+
+
+
+	val SPEED_LIMIT_MAJOR_ROAD = "speedLimitMajorRoad"
+
+	val SPEED_LIMIT_MAJOR_ROAD_VALUE = 110
+
+	/** Replies the speed limit for major road.
+	 */
+	@Pure
+	def getSpeedLimitMajorRoad : int
+
+	/** Change the speed limit for major road.
+	 */
+	def setSpeedLimitMajorRoad(limit : int)
+
+
+
+
+	val SPEED_LIMIT_SECONDARY_ROAD = "speedLimitSecondaryRoad"
+
+	val SPEED_LIMIT_SECONDARY_ROAD_VALUE = 80
+
+	/** Replies the speed limit for secondary road.
+	 */
+	@Pure
+	def getSpeedLimitSecondaryRoad : int
+
+	/** Change the speed limit for secondary road.
+	 */
+	def setSpeedLimitSecondaryRoad(limit : int)
+
+
+
+
+	val SPEED_LIMIT_LOCAL_ROAD = "speedLimitLocalRoad"
+
+	val SPEED_LIMIT_LOCAL_ROAD_VALUE = 50
+
+	/** Replies the speed limit for local road.
+	 */
+	@Pure
+	def getSpeedLimitLocalRoad : int
+
+	/** Change the speed limit for local road.
+	 */
+	def setSpeedLimitLocalRoad(limit : int)
+
+
+
+
+	val SPEED_LIMIT_MAJOR_URBAN_AXIS = "speedLimitMajorUrbanAxis"
+
+	val SPEED_LIMIT_MAJOR_URBAN_AXIS_VALUE = 70
+
+	/** Replies the speed limit for major urban axis.
+	 */
+	@Pure
+	def getSpeedLimitMajorUrbanAxis : int
+
+	/** Change the speed limit for major urban axis.
+	 */
+	def setSpeedLimitMajorUrbanAxis(limit : int)
+
+
+
+
+	val SPEED_LIMIT_PRIVACY_PATH = "speedLimitPrivacyPath"
+
+	val SPEED_LIMIT_PRIVACY_PATH_VALUE = 30
+
+	/** Replies the speed limit for privacy path.
+	 */
+	@Pure
+	def getSpeedLimitPrivacyPath : int
+
+	/** Change the speed limit for privacy path.
+	 */
+	def setSpeedLimitPrivacyPath(limit : int)
+
+
+
+
+	val SPEED_LIMIT_TRACK = "speedLimitTrack"
+
+	val SPEED_LIMIT_TRACK_VALUE = 30
+
+	/** Replies the speed limit for track.
+	 */
+	@Pure
+	def getSpeedLimitTrack : int
+
+	/** Change the speed limit for track.
+	 */
+	def setSpeedLimitTrack(limit : int)
+
+
+
+	val SPEED_LIMIT_BIKEWAY = "speedLimitBikeway"
+
+	val SPEED_LIMIT_BIKEWAY_VALUE = 20
+
+	/** Replies the speed limit for bikeway.
+	 */
+	@Pure
+	def getSpeedLimitBikeway : int
+
+	/** Change the speed limit for bikeway.
+	 */
+	def setSpeedLimitBikeway(limit : int)
+
+
+
+
+	val SPEED_LIMIT_OTHER = "speedLimitOther"
+
+	val SPEED_LIMIT_OTHER_VALUE = 50
+
+	/** Replies the speed limit for other segment.
+	 */
+	@Pure
+	def getSpeedLimitOther : int
+
+	/** Change the speed limit for other segment.
+	 */
+	def setSpeedLimitOther(limit : int)
+
+
+
+
+
+
+	val ROAD_FRICTION_FACTOR = "roadFrictionFactor"
+
+	val ROAD_FRICTION_FACTOR_VALUE = 0.8
+
+	/** Replies the factor of friction for roads.
+	 */
+	@Pure
+	def getRoadFrictionFactor : double
+
+	/** Change the factor of friction for roads.
+	 */
+	def setRoadFrictionFactor(factor : double)
+
+
+
+
+
+	val AGENT_SPAWNING_FREE_DISTANCE = "agentSpawningFreeDistance"
+
+	val AGENT_SPAWNING_FREE_DISTANCE_VALUE = 100.0
+
+	/** Replies the distance below which an agent cannot be spawn if another agent is close than.
+	 */
+	@Pure
+	def getAgentSpawningFreeDistance : double
+
+	/** Change the distance below which an agent cannot be spawn if another agent is close than.
+	 */
+	def setAgentSpawningFreeDistance(distance : double)
+
+
+
+
+	val OBJECT_ENABLE_BACK_OFF = "objectEnableBackOff"
+
+	val OBJECT_ENABLE_BACK_OFF_VALUE = false
+
+	/** Replies if vehicles could back off.
+	 */
+	@Pure
+	def isObjectEnableBackOff : boolean
+
+	/** Change the flag that indicates if vehicles could back off.
+	 */
+	def setObjectEnableBackOff(enable : boolean)
+
+
+
+
+
+	val OBJECT_AVOID_PHYSICAL_COLLISION = "objectAvoidPhysicalCollision"
+
+	val OBJECT_AVOID_PHYSICAL_COLLISION_VALUE = true
+
+	/** Replies if physical collision is avoided between the road objects.
+	 */
+	@Pure
+	def isObjectAvoidPhysicalCollision : boolean
+
+	/** Change the flag that indicates if physical collision is avoided between the road objects.
+	 */
+	def setObjectAvoidPhysicalCollision(avoid : boolean)
+
+
+
+
+	val CONTROL_LESS_ON_CAR_CRASH = "controlLessOnCarCrash"
+
+	val CONTROL_LESS_ON_CAR_CRASH_VALUE = false
+
+	/** Replies if the control of the car must be lost by the agent when the car is crashed.
+	 */
+	@Pure
+	def isControlLessOnCarCrash : boolean
+
+	/** Change the flag that indicates if the control of the car must be lost by the agent when the car is crashed.
+	 */
+	def setControlLessOnCarCrash(disableControl : boolean)
+
+
+
+
+
+	val CAR_CRASH_DURATION = "carCrashDuration"
+
+	val CAR_CRASH_DURATION_VALUE = 15.0 * 60.0
+
+	/** Replies the duration of a car crash before removing the car (in seconds).
+	 */
+	@Pure
+	def getCarCrashDuration : double
+
+	/** Change the duration of a car crash before removing the car (in seconds).
+	 */
+	def setCarCrashDuration(duration : double)
+
+
+
+
+
+	val CAR_FOLLOWING_MODEL = "carFollowingModel"
+
+	val CAR_FOLLOWING_MODEL_VALUE = CarFollowingModel::bestModel
+
+	/** Replies the type of car following model to be used by default.
+	 */
+	@Pure
+	def getCarFollowingModel : CarFollowingModel
+
+	/** Change the type of car following model to be used by default.
+	 */
+	def setCarFollowingModel(model : CarFollowingModel)
+
+}

@@ -1,0 +1,359 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.util
+
+import java.util.Iterator
+import java.util.List
+import java.util.NoSuchElementException
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.gis.road.primitive.RoadConnection
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.math.geometry.d1.Direction1D
+import org.arakhne.afc.math.geometry.d1.Point1D
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.math.geometry.d1.d.Rectangle1d
+import org.arakhne.afc.math.geometry.d2.Vector2D
+import org.arakhne.afc.simulation.framework.framework1d.environment.PerceptionUnit1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadSpeedLimit
+import org.arakhne.afc.util.ListUtil
+
+import static extension org.arakhne.afc.math.physics.MeasureUnitUtil.*
+
+/** 
+ * Utility functions for road driver behavior.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+final class RoadTools {
+
+	/** 
+	 * Gets the angle between two connected segments
+	 * 
+	 * @param firstSegment the first segment
+	 * @param secondSegment the second segment
+	 * @return the signed angle between the two, in degrees
+		 */
+	@Pure
+	static def getAngle(firstSegment : RoadSegment, secondSegment : RoadSegment) : double {
+		var connection = firstSegment.getSharedConnectionWith(secondSegment)
+		var connecPt = connection.point
+		var firstPt = firstSegment.getOtherSidePoint(connection).point
+		var lastPt = secondSegment.getOtherSidePoint(connection).point
+		return Vector2D::signedAngle(connecPt.x - firstPt.x, connecPt.y - firstPt.y, lastPt.x - connecPt.x,
+			lastPt.y - connecPt.y)
+	}
+
+	/** 
+	 * Computes if the given perception contains a vehicle for which we must
+	 * yield the right of way
+	 * 
+	 * @param p the perception
+	 * @param path is the path followed by the agent.
+	 * @return {@code true} if we must yield the right of way to the
+	 * vehicle of the perception
+	 */
+	@Pure
+	static def mustYieldPriority(p : PerceptionUnit1d<RoadObject>, path : RoadPath) : boolean {
+		if (p.isInFront && !p.isSameDirection) {
+			var pathToVehicle = RoadPath::of(p.pathToPerceivedObject as List<RoadSegment>)
+			var otherVehicleCrossroad = pathToVehicle.firstJunctionPoint
+			if (otherVehicleCrossroad !== null) {
+				var thisCrossroad = path.firstJunctionPoint
+				if (otherVehicleCrossroad == thisCrossroad &&
+					getAngle(thisCrossroad.enteringSegment, thisCrossroad.exitingSegment) >
+						getAngle(otherVehicleCrossroad.enteringSegment, otherVehicleCrossroad.exitingSegment)) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	/** Compute the maximum speed to reach for passing the next road turn.
+	 *
+	 * @param path the road path.
+	 * @param currentPosition the position of the car along the path.
+	 * @param currentSpeed the speed of the car.
+	 * @param currentDirection the direction of the car along the road path.
+	 * @param maxSpeed the maximum speed (legal or not) that the car cannot go higher.
+	 * @return the maximum speed for the next turn.
+	 */
+	@Pure
+	static def getMaxSpeedForNextTurn(path : RoadPath, currentPosition : Point1d, currentSpeed : double,
+		currentDirection : Direction1D, maxSpeed : double) : double {
+		if (path === null || path.size < 2) {
+			return maxSpeed
+		}
+
+		var firstSegment = path.get(0)
+		var secondSegment = path.get(1)
+
+		var radius : double
+
+		if (firstSegment == secondSegment) {
+			radius = 180.0
+		} else {
+			var connection = firstSegment.getSharedConnectionWith(secondSegment)
+
+			var p0 = firstSegment.getOtherSidePoint(connection).point
+			var p1 = connection.point
+			var p2 = secondSegment.getOtherSidePoint(connection).point
+
+			radius = Math::abs(Vector2D::signedAngle(p0.x - p1.x, p0.y - p1.y, p2.x - p1.x, p2.y - p1.y))
+		}
+
+		// http://fr.wikipedia.org/wiki/Signalisation_verticale_des_virages_en_France#Vitesse_dans_le_virage
+		var result = Math::min(102.0 / (1.0 + 346.0 / (radius * 180.0 / Math::PI) ** 1.5), maxSpeed)
+
+		return result
+	}
+
+	/** 
+	 * Returns the index of the road lane that is corresponding to the given position.
+	 * 
+	 * @param p the position
+	 * @return the index of the road lane.
+	 */
+	@Pure
+	static def getRoadLaneIndex(p : Point1D<?, ?, ?>) : int {
+		val segment = p.segment
+		if (segment instanceof RoadSegment) {
+			val position = p.lateralDistance
+			val count = segment.getLaneCount - 1
+			for (var i = 0; i < count; i++) {
+				val size = segment.getLaneSize(i)
+				val center = segment.getLaneCenter(i)
+				val max = center + size / 2.0
+				if (position <= max) {
+					return i
+				}
+			}
+			return count
+		}
+		return 0
+	}
+
+	/** 
+	 * Returns if the given perception's object is in front and in the same lane
+	 * as us, meaning that we will have to break/avoid it
+	 * 
+	 * <p>This function uses the lane assignment of the vehicles to determine if the
+	 * vehicle {@code p} is facing the current vehicle.
+	 * 
+	 * <p>The function {@code isInSpatialWay} provides a similar answer but based on spatial coordinates.
+	 * 
+	 * 
+	 * @param p the perception
+	 * @param vehicleBounds
+	 * @return {@code true} if the perception's object is in our way
+	 * @see #IsInSpatialWay(CullingResult1d, Rectangle1d)
+	 */
+	@Pure
+	static def isInLaneWay(p : PerceptionUnit1d<RoadObject>, vehicleBounds : Rectangle1d) : boolean {
+		if (p.isInFront) {
+			return vehicleBounds.lateralIntersects(p.perceivedObject.bounds)
+		}
+		return false
+	}
+
+	
+	/** 
+	 * Returns if the given perception's object is in front and in the same lane
+	 * as us, meaning that we will have to break/avoid it.
+	 *
+	 * <p>This function uses the geometric position of the vehicles to determine if the
+	 * vehicle {@code p} is facing the current vehicle.
+	 * 
+	 * <p>The function {@code isInLaneWay} provides a similar answer but based on lane assignment.
+	 * 
+	 * @param p the perception
+	 * @param vehicleBounds
+	 * @return {@code true} if the perception's object is in our way
+	 * @see #isInLaneWay(CullingResult1d, Rectangle1d)
+	 */
+	@Pure
+	static def isInSpatialWay(p : PerceptionUnit1d<RoadObject>, vehicleBounds : Rectangle1d) : boolean {
+		p.isInFront && vehicleBounds.lateralIntersects(p.perceivedObject.bounds)
+	}
+
+	/** 
+	 * Computes if given bounds intersect laterally with our bounds
+	 * 
+	 * @param vehicleBounds
+	 * @param b other bounds
+	 * @return {@code true} if the bounds intersect laterally
+	 */
+	private static def lateralIntersects(vehicleBounds : Rectangle1d, b : Rectangle1d) : boolean {
+		vehicleBounds.maxY > b.minY && vehicleBounds.minY < b.maxY
+	}
+
+	/** Compute the speed limit for the given road in m/s.
+	 *
+	 * @param rs is the road segment.
+	 * @param maxSpeed is the maximum speed to consider in m/s
+	 * @return the minimum value between the given maxSpeed and the legal speed limit of the road segment.
+	 */
+	static def getSpeedLimitFor(rs : RoadSegment, maxSpeed : double = Double::POSITIVE_INFINITY) : double {
+		var maxspeed = maxSpeed
+		if (rs.hasAttribute("segmentSpeed")) {
+			var attrmaxspeed = rs.getAttribute("segmentSpeed", Double::POSITIVE_INFINITY)
+			maxspeed = Math::min(maxspeed, attrmaxspeed.kmh2ms)
+		} else {
+			maxspeed = Math::min(maxspeed, RoadSpeedLimit::getDefaultSpeedLimitFor(rs.roadType).kmh2ms)
+		}
+		return maxspeed
+	}
+
+	/** Replies the direction for the given road.
+	 *
+	 * @param road the road to test.
+	 * @param n the index of the lane.
+	 * @return the direction of a lane, or {@code null} if the road cannot be traversed.
+	 */
+	static def getDirectionForLane(road : RoadSegment, n : int) : Direction1D {
+		var d0 : Direction1D
+		var d1 = road.trafficDirection
+		switch (d1) {
+			case DOUBLE_WAY: {
+				d0 = road.getLaneDirection(n)
+			}
+			case NO_ENTRY: {
+				d0 = Direction1D::REVERTED_DIRECTION
+			}
+			case NO_WAY: {
+				d0 = null
+			}
+			case ONE_WAY: {
+				d0 = Direction1D::SEGMENT_DIRECTION
+			}
+		}
+		return d0
+	}
+
+	private static def getLaneCountForSegmentDirection(road : RoadSegment, n : int) : int {
+		var i = n / 2
+		var d = road.getDirectionForLane(i)
+		if (d.isSegmentDirection) {
+			i++
+			while (i < n && d.isSegmentDirection) {
+				d = road.getDirectionForLane(i)
+				i++
+			}
+			return i
+		}
+
+		i--
+		while (i >= 0 && d.isRevertedSegmentDirection) {
+			d = road.getDirectionForLane(i)
+			i--
+		}
+		return i + 1
+	}
+
+	/** 
+	 * Returns the number of lanes on the given road that start from the same entry point.
+	 * 
+	 * @param road the road.
+	 * @param entryPoint the entryPoint
+	 * @return the number of lanes for the same direction.
+	 */
+	@Pure
+	static def getLaneCountForDirection(road : RoadSegment, entryPoint : RoadConnection) : int {
+		val n = road.getLaneCount
+		val nb = getLaneCountForSegmentDirection(road, n)
+		if (entryPoint == road.endPoint) {
+			return n - nb
+		}
+		return nb
+	}
+
+	/** Replies the connection that permits to exit the segment at the given index into the path.
+	 *
+	 * @param path the road path.
+	 * @param index the index of the road segment.
+	 * @return the exit connection.
+	 */
+	static def getEndingPointFor(path : RoadPath, index : int) : RoadConnection {
+		val seg = path.get(index)
+		val pt = path.getStartingPointFor(index)
+		return seg.getOtherSidePoint(pt)
+	}
+
+	/** Revert the specified path.
+	 * 
+	 * @param path the road path.
+	 * @return the reverted path.
+	 */
+	static def toReversePath(path : RoadPath) : RoadPath {
+		val reversePath = new RoadPath
+		val segments = ListUtil.reverseIterator(path)
+		if (segments.hasNext) {
+			reversePath.add(segments.next, path.lastPoint)
+			while (segments.hasNext) {
+				val segment = segments.next
+				reversePath.add(segment)
+			}
+		}
+		return reversePath
+	}
+
+	/** 
+	 * Iterator in the environment.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	static def reverseIterator(list : List<T>) : Iterator<T> with T {
+		return new Iterator<T>() {
+
+			var next = list.size() - 1
+
+			override hasNext : boolean {
+				this.next >= 0
+			}
+
+			override next : T {
+				val n = this.next
+				this.next--
+				try {
+					return list.get(n);
+				} catch (exception : IndexOutOfBoundsException) {
+					throw new NoSuchElementException
+				}
+			}
+
+			override remove {
+				val n = this.next + 1
+				if (n < 0 || n >= list.size) {
+					throw new NoSuchElementException
+				}
+				list.remove(n)
+			}
+
+		}
+	}
+
+}

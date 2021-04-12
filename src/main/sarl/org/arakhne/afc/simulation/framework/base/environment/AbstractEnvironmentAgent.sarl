@@ -1,0 +1,283 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.base.environment
+
+import io.sarl.core.Behaviors
+import io.sarl.core.DefaultContextInteractions
+import io.sarl.core.Initialize
+import io.sarl.core.Lifecycle
+import io.sarl.core.Logging
+import io.sarl.core.OpenEventSpace
+import io.sarl.javafx.AppExit
+import io.sarl.lang.core.Address
+import java.util.Collections
+import java.util.List
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import org.arakhne.afc.simulation.framework.base.config.AbstractConfiguration
+import org.arakhne.afc.simulation.framework.base.events.Influence
+import org.arakhne.afc.simulation.framework.base.events.ObjectAgentUpdate
+import org.arakhne.afc.simulation.framework.base.events.Perception
+import org.arakhne.afc.simulation.framework.base.events.SimulationAgentReady
+import org.arakhne.afc.simulation.framework.base.events.StartSimulation
+import org.arakhne.afc.simulation.framework.base.scenario.SimulationScenario
+import org.arakhne.afc.simulation.framework.base.time.TimeManager
+
+/**
+ * The agent that supports the agent environment.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+@SuppressWarnings("potential_field_synchronization_problem")
+abstract agent AbstractEnvironmentAgent {
+
+	uses DefaultContextInteractions, Lifecycle, Behaviors, Logging
+
+	var scenario : SimulationScenario<?, ?, ?>
+
+	var environment : AbstractEnvironmentModel<?, ?>
+
+	var ^space : OpenEventSpace
+	var myAdr : Address
+
+	val influences = new AtomicInteger(0)
+
+	val atLeastOneAgentSpawn = new AtomicBoolean
+
+	val freeze = new AtomicBoolean(false)
+
+	val firstRun = new AtomicBoolean(true)
+
+	var time : TimeManager
+
+	on Initialize {
+		occurrence.overridableInitializer
+		emit(new SimulationAgentReady)
+	}
+
+	def overridableInitializer(evt : Initialize) : void {
+		this.scenario = (evt.parameters.get(0) as SimulationScenario<?, ?, ?>)
+		var uiSpaceId = (evt.parameters.get(1) as UUID)
+		assert uiSpaceId !== null
+		var environmentSpaceId = (evt.parameters.get(2) as UUID)
+		this.environment = this.scenario.agentEnvironment
+		this.time = new TimeManager(this.scenario.configuration.timeConfig)
+		this.^space = defaultContext.getSpace(environmentSpaceId)
+		this.^space.registerStrongParticipant(asEventListener)
+		this.myAdr = this.^space.getAddress(ID)
+	}
+
+	on Influence [!freeze.get] {
+		var id = occurrence.influencedObject
+		if (id === null) {
+			id = occurrence.source.ID
+		}
+		var body = this.environment.getAgentBodyFor(id)
+		if (body !== null) {
+			body.influence = occurrence
+			var v = this.influences.incrementAndGet
+			if (v >= this.environment.agentBodyCount) {
+				runEnvironmentBehavior
+			}
+		}
+	}
+
+	on AppExit {
+		var scn = this.scenario
+		if (scn !== null) {
+			var pm = scn.probeManager
+			if (pm !== null) {
+				runProbes(Collections::emptyList)
+				pm.removeAll
+			}
+		}
+		killMe
+	}
+
+	on StartSimulation {
+		runEnvironmentBehavior
+	}
+
+	def initSimulation {
+		spawnObjectAgents
+	}
+
+	def runProbes(removedBodies : List<? extends AgentBody>) {
+		if (this.scenario !== null && this.environment !== null && this.time !== null) {
+			val manager = this.scenario.probeManager
+			if (manager !== null) {
+				manager.run(this.environment, removedBodies, this.time)
+			}
+		}
+	}
+
+	@SuppressWarnings("raw_type", "discouraged_reference")
+	def runEnvironmentBehavior {
+		this.freeze.set(true)
+		var stopSimulation = false
+		try {
+			val isFirstRun = this.firstRun.getAndSet(false)
+			
+			var removedBodies : List
+
+			if (isFirstRun) {
+				initSimulation
+				removedBodies = Collections::emptyList
+			} else {
+				this.influences.set(0)
+				removedBodies = newLinkedList
+				stopSimulation = this.environment.applyInfluences(this.time, removedBodies)
+			}
+			
+			this.time.doProgress
+
+			runProbes(removedBodies)
+
+			this.environment.synchronizeViews
+
+			var delay = this.scenario.configuration.timeConfig.simulationDelay
+			if (delay > 0) {
+				Thread::sleep(delay)
+			}
+
+			spawnAgents
+			this.environment.computePerceptions
+			notifyObjectAgents
+		} finally {
+			this.freeze.set(false)
+		}
+		notifyAgentsOrDie(stopSimulation)
+	}
+
+	def spawnObjectAgents {
+		for (group : this.scenario.objectToAgentMapping) {
+			var groupSpace = group.createObjectAgentSpace(defaultContext)
+			if (groupSpace !== null) {
+				group.applicationAgentSpace = this.^space
+				for (mapping : group.objectAgentMapping) {
+					var id = mapping.objectId
+					var agentType = mapping.agentType
+					val agentParameters = mapping.agentParameters
+					//
+					val params = <Object>newArrayOfSize(agentParameters.size + 3)
+					params.set(0, group)
+					params.set(1, mapping)
+					params.set(2, this.time)
+					for (var i = 0, var j = 3; i < agentParameters.size; i++, j++) {
+						params.set(j, agentParameters.get(i))
+					}
+					//
+					agentType.spawnInContextWithID(id, defaultContext, params)
+				}
+			}
+		}
+	}
+
+	def spawnAgents {
+		for (spawner : this.scenario.spawners) {
+			if (spawner.budget > 0 && spawner.canCreateBodyPhysically(this.time, this.environment)) {
+				var count = spawner.spawnableAt(this.time)
+				if (count > 0) {
+					var spawned = 0
+					for (var i = 0; i < count; i++) {
+						try {
+							var body = spawner.createBody(this.time, this.environment)
+							if (body !== null) {
+								var params : Object[] = #[
+									this.^space.spaceID.ID,
+									ID
+								]
+								if (!spawner.agentParameters.empty) {
+									params = params + spawner.agentParameters
+								}
+								spawner.agentType.spawnInContextWithID(body.UUID, defaultContext, params)
+								this.atLeastOneAgentSpawn.set(true)
+								spawned++
+							}
+						} catch (e : Throwable) {
+							//
+						}
+					}
+					val rest = spawner.spawned(spawned)
+					info("Spawned: {0}; Rest: {1}", spawned, rest)
+				}
+			}
+		}
+	}
+
+	def notifyObjectAgents {
+		if (!this.scenario.objectToAgentMapping.empty) {
+			val evt = new ObjectAgentUpdate(
+				this.time.current, this.time.dt, this.time.OSTimeFactor)
+			for (objectAgentGroup : this.scenario.objectToAgentMapping) {
+				val ^space = objectAgentGroup.objectAgentSpace
+				if (^space !== null) {
+					^space.emit(ID, evt)
+				}
+			}
+		}
+	}
+
+	def notifyAgentsOrDie(forceStop : boolean) {
+		if (forceStop) {
+			emit(new AppExit)
+		} else {
+			var run = false
+			for (body : this.environment.agentBodies.values) {
+				run = true
+				var ^event = getPerceptionFactory.newPerception(this.time,
+					this.scenario.configuration,
+					body)
+				this.^space.emit(this.myAdr.ID, ^event)[it.ID == body.UUID]
+			}
+			if (!run) {
+				if (this.atLeastOneAgentSpawn.get) {
+					runProbes(Collections::emptyList)
+					killMe
+				} else {
+					wake(new StartSimulation)
+				}
+			}
+		}
+		//
+	}
+
+	abstract def getPerceptionFactory : PerceptionFactory<T> with T extends AgentBody 
+
+	/** 
+	 * Factory of perception.
+	 * 
+	 * @author $Author: sgalland$
+	 * @version $FullVersion$
+	 * @mavengroupid $GroupId$
+	 * @mavenartifactid $ArtifactId$
+	 */
+	interface PerceptionFactory<T extends AgentBody> {
+
+		def newPerception(time : TimeManager, configuration : AbstractConfiguration,
+			body : T) : Perception
+
+	}
+
+}

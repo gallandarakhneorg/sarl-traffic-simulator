@@ -1,0 +1,153 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2020 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.agents.obstacle
+
+import io.sarl.core.Logging
+import io.sarl.lang.util.OutParameter
+import java.util.List
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.math.geometry.d1.d.Point1d
+import org.arakhne.afc.math.geometry.d1.d.Rectangle1d
+import org.arakhne.afc.simulation.framework.base.agents.humanevaluation.HumanEvaluation
+import org.arakhne.afc.simulation.framework.framework1d.environment.MobileRoadObject
+import org.arakhne.afc.simulation.framework.framework1d.environment.ObjectType
+import org.arakhne.afc.simulation.framework.framework1d.environment.PerceptionUnit1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+
+import static extension org.arakhne.afc.simulation.framework.framework1d.util.RoadTools.*
+
+/**
+ * Standard skill for an agent to detect an obstacle on a road system.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+skill StandardObstacleDetector implements ObstacleDetector {
+
+	uses Logging, HumanEvaluation
+
+	override detectObstacle(
+					path : RoadPath,
+					currentPosition : Point1d, currentSpeed : double,
+					vehicleBounds : Rectangle1d, destinationPosition : Point1d,
+					perceptions : List<PerceptionUnit1d<RoadObject>>,
+					outObstacle : OutParameter<PerceptionUnit1d<RoadObject>>,
+					outObstacleSpeed : OutParameter<Double>, outDistance : OutParameter<Double>) : ObjectType {
+
+		// initialize with distance to destination
+		var obstacleDistance = if (currentPosition !== null && destinationPosition !== null)
+				destinationPosition.getDistance(currentPosition).estimateDistance
+			else
+				Double::POSITIVE_INFINITY
+		var obstacleSpeed = 0.0
+		var foundObstacle : PerceptionUnit1d<RoadObject> = null
+		var iter = perceptions.iterator
+		while (iter.hasNext()) {
+			var obstacle = iter.next
+			var dist = obstacle.evaluateDistance
+			if (considerAsObstacle(obstacle, dist, obstacleDistance) &&
+				(obstacle.isInLaneWay(vehicleBounds) || obstacle.mustYieldPriority(path))) {
+				foundObstacle = obstacle
+				obstacleDistance = dist
+				obstacleSpeed = obstacle.evaluateSpeed(currentSpeed)
+			}
+		}
+
+		if (foundObstacle !== null) {
+			val po = foundObstacle.perceivedObject
+			assert po !== null
+			if (obstacleSpeed <= 0.1 || currentSpeed >= obstacleDistance) {
+				warning("Obstacle: {0} ({1}), estimated distance={2}m, estimated speed={3}m/s",
+				po.UUID, po.class.simpleName, obstacleDistance, obstacleSpeed)
+
+			} else {
+				info("Obstacle: {0} ({1}), estimated distance={2}m, estimated speed={3}m/s", po.UUID,
+					po.class.simpleName,
+					obstacleDistance,
+					obstacleSpeed)
+			}
+			debug(foundObstacle)
+		}
+
+		if (outObstacle !== null) {
+			outObstacle.set(foundObstacle)
+		}
+
+		if (outDistance !== null) {
+			outDistance.set(obstacleDistance)
+		}
+
+		if (outObstacleSpeed !== null) {
+			outObstacleSpeed.set(if (foundObstacle !== null) obstacleSpeed else 0.0)
+		}
+		
+		return foundObstacle?.objectType
+	}
+
+	/** Evaluate the speed of an obstacle.
+	 *
+	 * @param obj the obstacle.
+	 * @param currentSpeed the current speed of the agent.
+	 * @return the evaluated speed.
+	 */
+	protected def evaluateSpeed(obj : PerceptionUnit1d<RoadObject>, currentSpeed : double) : double {
+		val instance = obj.perceivedObject
+		if (instance instanceof MobileRoadObject) {
+			return instance.linearSpeed.estimateSpeed
+		}
+		return 0.0
+	}
+
+	/** Evaluate the distance to an obstacle.
+	 *
+	 * @param obj the obstacle.
+	 * @return the evaluated distance.
+	 */
+	protected def evaluateDistance(obj : PerceptionUnit1d<RoadObject>) : double {
+		obj.perceivedObjectCurvilineDistance.estimateDistance
+	}
+
+	/** Evaluate if the given object could be considered as the most dangerous obstacle.
+	 *
+	 * @param obj the object.
+	 * @param distanceToObject the distance to the given object.
+	 * @param distanceToCurrentObstacle the distance to the previous obstacle.
+	 * @return {@code true} if the given object should replace the current obstacle.
+	 */
+	protected def considerAsObstacle(obj : PerceptionUnit1d<RoadObject>, distanceToObject : double,
+				distanceToCurrentObstacle : double) : boolean {
+		switch (obj.objectType) {
+			case MOBILE_OBJECT,
+			case STATIC_OBJECT,
+			case OBSTACLE_WEATHER_OBJECT: {
+				if (distanceToObject < distanceToCurrentObstacle) {
+					return true
+				}
+			}
+			case WEATHER_OBJECT,
+			case ROAD_SIGN: {
+			}
+		}
+		return false
+	}
+
+}

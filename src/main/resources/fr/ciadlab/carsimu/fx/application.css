@@ -1,0 +1,75 @@
+.scroll-pane > .viewport {
+   -fx-background-color: white;
+}
+
+#setupButton {          
+    -fx-background-image: url("configure.png");
+    -fx-background-size: 32 32;
+    -fx-background-repeat: no-repeat;
+    -fx-background-position: 5;
+    -fx-padding: 12 5 12 40;
+    -fx-font-size: 14px;
+}
+
+#startButton {          
+    -fx-background-image: url("start.png");
+    -fx-background-size: 32 32;
+    -fx-background-repeat: no-repeat;
+    -fx-background-position: 5;
+    -fx-padding: 12 5 12 40;
+    -fx-font-size: 14px;
+}
+
+#stopButton {          
+    -fx-background-image: url("stop.png");
+    -fx-background-size: 32 32;
+    -fx-background-repeat: no-repeat;
+    -fx-background-position: 5;
+    -fx-padding: 12 5 12 40;
+    -fx-font-size: 14px;
+}
+
+#noZoomButton {          
+    -fx-background-image: url("nozoom.png");
+    -fx-background-size: 32 32;
+    -fx-background-repeat: no-repeat;
+    -fx-background-position: 5;
+    -fx-padding: 12 5 12 40;
+    -fx-font-size: 14px;
+}
+
+#preferenceButton {          
+    -fx-background-image: url("preferences.png");
+    -fx-background-size: 32 32;
+    -fx-background-repeat: no-repeat;
+    -fx-background-position: 5;
+    -fx-padding: 12 5 12 40;
+    -fx-font-size: 14px;
+}
+
+#resetPreferencesButton {          
+    -fx-background-image: url("resetpreferences.png");
+    -fx-background-size: 32 32;
+    -fx-background-repeat: no-repeat;
+    -fx-background-position: 5;
+    -fx-padding: 12 5 12 40;
+    -fx-font-size: 14px;
+}
+
+#clearConsoleButton {          
+    -fx-background-image: url("delete.png");
+    -fx-background-size: 24 24;
+    -fx-background-repeat: no-repeat;
+    -fx-padding: 5 5 5 5;
+    -fx-min-width: 24;
+    -fx-min-height: 24;
+}
+
+#saveConsoleButton {          
+    -fx-background-image: url("save.png");
+    -fx-background-size: 24 24;
+    -fx-background-repeat: no-repeat;
+    -fx-padding: 5 5 5 5;
+    -fx-min-width: 24;
+    -fx-min-height: 24;
+}

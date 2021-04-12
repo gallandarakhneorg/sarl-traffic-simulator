@@ -1,0 +1,166 @@
+/*
+ * $Id$
+ *
+ * SARL is an general-purpose agent programming language.
+ * More details on http://www.sarl.io
+ *
+ * Copyright (C) 2014-2021 the original authors or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package fr.ciadlab.carsimu.behaviors
+
+import io.sarl.core.Lifecycle
+import io.sarl.core.Logging
+import io.sarl.core.Time
+import org.arakhne.afc.gis.primitive.FlagContainer
+import org.arakhne.afc.gis.road.path.RoadPath
+import org.arakhne.afc.simulation.framework.base.agents.humanevaluation.HumanEvaluation
+import org.arakhne.afc.simulation.framework.framework1d.agents.acceleration.AccelerationSelection
+import org.arakhne.afc.simulation.framework.framework1d.agents.cruisespeed.CruiseSpeedManager
+import org.arakhne.afc.simulation.framework.framework1d.agents.destination.DestinationTester
+import org.arakhne.afc.simulation.framework.framework1d.agents.path.PathSelection
+import org.arakhne.afc.simulation.framework.framework1d.events.RoadPerception
+import org.arakhne.afc.simulation.framework.framework1d.preferences.PreferenceManager1d
+import org.arakhne.afc.simulation.framework.framework1d.skills.RoadEnvironment
+
+import static extension org.arakhne.afc.math.physics.MeasureUnitUtil.*
+import static extension org.arakhne.afc.simulation.framework.base.preferences.PreferenceManagerSingleton.*
+
+/**
+ * The agent that supports the driver behavior.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+@SuppressWarnings("potential_field_synchronization_problem")
+behavior Driver {
+
+	uses Logging, Lifecycle, Time
+	uses RoadEnvironment
+	uses PathSelection, AccelerationSelection, CruiseSpeedManager, DestinationTester, HumanEvaluation
+
+	var minimalSafetyDistanceValue : Double
+
+	var reactionTimeValue : Double
+	
+	var comfortDecelerationValue : Double
+
+	var freeDrivingDistanceValue : Double
+
+	var path = new RoadPath
+
+	def getMinimalSafetyDistance : double {
+		if (this.minimalSafetyDistanceValue === null || this.minimalSafetyDistanceValue <= 0.0) {
+			this.minimalSafetyDistanceValue = PreferenceManager1d.singleton.agentSafetyDistance
+		}
+		return this.minimalSafetyDistanceValue.doubleValue
+	}
+
+	def setMinimalSafetyDistance(distance : double) {
+		this.minimalSafetyDistanceValue = distance
+	}
+
+	def getReactionTime : double {
+		if (this.reactionTimeValue === null || this.reactionTimeValue <= 0.0) {
+			this.reactionTimeValue = PreferenceManager1d.singleton.agentReactionTime
+		}
+		return this.reactionTimeValue.doubleValue
+	}
+
+	def setReactionTime(time : double) {
+		this.reactionTimeValue = time
+	}
+	
+	def getComfortDeceleration : double {
+		if (this.comfortDecelerationValue === null || this.comfortDecelerationValue<= 0.0) {
+			this.comfortDecelerationValue = PreferenceManager1d.singleton.objectComfortDeceleration
+		}
+		val value = this.comfortDecelerationValue.doubleValue
+		return value
+	}
+
+	def setComfortDeceleration(deceleration : double) {
+		this.comfortDecelerationValue = deceleration
+	}
+
+	def getFreeDrivingDistance : double {
+		if (this.freeDrivingDistanceValue === null || this.freeDrivingDistanceValue <= 0.0) {
+			this.freeDrivingDistanceValue = PreferenceManager1d.singleton.freeDrivingDistance
+		}
+		val value = this.freeDrivingDistanceValue.doubleValue
+		return value
+	}
+	
+	def setFreeDrivingDistance(distance : double) {
+		this.freeDrivingDistanceValue = distance
+	}
+
+	def dbgPathSelection(sel : boolean = true) {
+		if (sel) {
+			for (road : this.path) {
+				road.flag = FlagContainer::FLAG_SELECTED
+			}
+		} else {
+			for (road : this.path) {
+				road.unsetFlag(FlagContainer::FLAG_SELECTED)
+			}
+		}
+	}
+
+	@SuppressWarnings("discouraged_occurrence_readonly_use")
+	on RoadPerception {
+		if (isArrived(occurrence.body.roadSegment, occurrence.body.position)) {
+			info("exiting from the experiment zone")
+			killMe
+		}
+
+		var body = occurrence.body
+
+		info("Speed=" + body.linearVelocity + " m/s ("
+			+ body.linearVelocity.ms2kmh + " km/h), acceleration="
+			+ body.linearAcceleration + " m/s²")
+
+		setPreferredCruiseSpeedIfNotSet(body.linearVelocity)
+
+		// Unselect the previous agent's path
+		//dbgPathSelection(false)
+
+		this.path.updatePath(occurrence.roads, body.position, body.directionOnRoad)
+
+		// Select the current agent's path
+		//dbgPathSelection
+
+		updateCruiseSpeed(
+			time, occurrence.objects, this.path, body.position,
+			body.directionOnRoad, body.linearVelocity, body.maxLinearSpeed)
+
+		info("Cruise speed=" + cruiseSpeed.ms2kmh + " km/h")
+
+		var acc = computeAcceleration(
+    		this.path, 
+    		occurrence.objects,
+    		body,
+    		comfortDeceleration,
+            estimateSafeBrakingDistance(body.linearVelocity, body.maxLinearDeceleration, minimalSafetyDistance),
+            freeDrivingDistance,
+            reactionTime)
+
+		this.path.move(acc)
+		//doNothing
+	}
+
+}
